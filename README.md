@@ -4,7 +4,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-![Search demo placeholder](docs/demo-search.gif)
+![Search demo placeholder](assets/semantic-search.gif)
 <!-- Replace with a GIF of a search query returning results -->
 
 Zotero Semantic Search indexes your Zotero library using dense vector embeddings and lets you search by meaning rather than keywords. An optional local LLM synthesises a cited summary from the matching papers — all processing happens on your machine with no data leaving your network.
@@ -25,11 +25,11 @@ Zotero Semantic Search indexes your Zotero library using dense vector embeddings
 ## Screenshots
 
 ### Semantic search across your library
-![Search results placeholder](docs/screenshot-results.png)
+![Search results placeholder](assets/semantic-search.gif)
 <!-- Replace with a screenshot of the results cards -->
 
 ### AI summary with cited references
-![AI summary placeholder](docs/screenshot-summary.gif)
+![AI summary placeholder](assets/ai-summary.gif)
 <!-- Replace with a GIF of the summary streaming in -->
 
 ---

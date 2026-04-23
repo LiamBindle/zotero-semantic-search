@@ -49,6 +49,16 @@ Response:\
 """
 
 
+async def get_version(url: str) -> str | None:
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{url}/api/version", timeout=3.0)
+            resp.raise_for_status()
+            return resp.json().get("version")
+    except Exception:
+        return None
+
+
 def check_available(url: str) -> bool:
     try:
         resp = httpx.get(f"{url}/api/tags", timeout=2.0)

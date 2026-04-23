@@ -217,6 +217,24 @@ def run_indexing(
     }
 
 
+# ── Collection index helpers ───────────────────────────────────────────────────
+
+def get_item_ids_for_collection(db_path: str, collection: str) -> list[str]:
+    """Return string item IDs for all items in the given collection."""
+    conn, tmp_db = _open_db(db_path)
+    try:
+        rows = conn.execute("""
+            SELECT DISTINCT ci.itemID
+            FROM collectionItems ci
+            JOIN collections col ON col.collectionID = ci.collectionID
+            WHERE col.collectionName = ?
+        """, (collection,)).fetchall()
+        return [str(row["itemID"]) for row in rows]
+    finally:
+        conn.close()
+        os.unlink(tmp_db)
+
+
 # ── Collection list helper ─────────────────────────────────────────────────────
 
 def get_collections(chroma_collection) -> list[str]:

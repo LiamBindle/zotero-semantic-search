@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import ollama as _ollama
-from indexer import CHROMA_COLLECTION, get_collections, get_pending_count, run_indexing
+from indexer import CHROMA_COLLECTION, get_collections, get_item_ids_for_collection, get_pending_count, run_indexing
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -97,8 +97,9 @@ async def index(request: Request):
 
 @app.get("/api/status")
 async def api_status():
+    version = await _ollama.get_version(OLLAMA_URL) if _ollama_available else None
     return {
-        "ollama": {"available": _ollama_available, "model": OLLAMA_MODEL},
+        "ollama": {"available": _ollama_available, "model": OLLAMA_MODEL, "version": version},
     }
 
 
@@ -222,16 +223,24 @@ async def start_index(incremental: bool = True, collection: str = ""):
 
 
 @app.delete("/api/index")
-async def delete_index():
+async def delete_index(collection: str = ""):
     global _chroma_col
     if _index_state["running"]:
         return JSONResponse({"error": "indexing in progress"}, status_code=409)
-    _chroma_client.delete_collection(CHROMA_COLLECTION)
-    _chroma_col = _chroma_client.get_or_create_collection(
-        name=CHROMA_COLLECTION,
-        metadata={"hnsw:space": "cosine"},
-    )
-    log.info("Index cleared.")
+    if collection:
+        item_ids = get_item_ids_for_collection(ZOTERO_DB, collection)
+        if item_ids:
+            results = _chroma_col.get(where={"item_id": {"$in": item_ids}}, include=[])
+            if results["ids"]:
+                _chroma_col.delete(ids=results["ids"])
+        log.info("Cleared index for collection '%s' (%d items).", collection, len(item_ids))
+    else:
+        _chroma_client.delete_collection(CHROMA_COLLECTION)
+        _chroma_col = _chroma_client.get_or_create_collection(
+            name=CHROMA_COLLECTION,
+            metadata={"hnsw:space": "cosine"},
+        )
+        log.info("Index cleared.")
     return {"ok": True}
 
 
