@@ -4,7 +4,8 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](#installation)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/your-username/zotero-semantic-search/pkgs/container/zotero-semantic-search)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/LiamBindle/zotero-semantic-search/pkgs/container/zotero-semantic-search)
+[![Docker image](https://github.com/LiamBindle/zotero-semantic-search/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LiamBindle/zotero-semantic-search/actions/workflows/docker-publish.yml)
 
 ![Search demo](assets/semantic-search.gif)
 
@@ -52,7 +53,7 @@ Create a folder anywhere on your computer and save the following as `docker-comp
 ```yaml
 services:
   zotero-search:
-    image: ghcr.io/your-username/zotero-semantic-search:latest
+    image: ghcr.io/LiamBindle/zotero-semantic-search:latest
     ports:
       - "8000:8000"
     volumes:
@@ -85,7 +86,7 @@ The first search on a collection indexes any unindexed attachments — this can 
 To build with different models, or to make code changes:
 
 ```bash
-git clone https://github.com/your-username/zotero-semantic-search.git
+git clone https://github.com/LiamBindle/zotero-semantic-search.git
 cd zotero-semantic-search
 docker compose build   # ~10 min first time
 docker compose up
