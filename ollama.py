@@ -81,11 +81,12 @@ async def expand_query(query: str, model: str, url: str) -> str | None:
 
 
 async def stream_summary(
-    query: str, results: list[dict], model: str, url: str
+    query: str, results: list[dict], model: str, url: str, context_chars: int = 3200
 ) -> AsyncIterator[str]:
+    chars_per = max(100, context_chars // len(results)) if results else 100
     sources = "\n\n".join(
-        f"[{i+1}] {r['title']} ({r.get('year') or 'n.d.'}):\n{r['text']}"
-        for i, r in enumerate(results[:8])
+        f"[{i+1}] {r['title']} ({r.get('year') or 'n.d.'}):\n{r['text'][:chars_per]}"
+        for i, r in enumerate(results)
     )
     prompt = _SUMMARY_PROMPT.format(query=query, sources=sources)
     try:

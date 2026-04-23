@@ -106,7 +106,7 @@ async def api_status():
 
 @app.get("/api/search")
 async def search(q: str = "", collection: str = "",
-                 limit: int = 12, min_score: float = 0.45):
+                 limit: int = 25, min_score: float = 0.55):
     if not q.strip():
         return {"results": [], "search_context": None}
 
@@ -252,6 +252,7 @@ async def open_file(path: str):
 class SummaryRequest(BaseModel):
     q: str
     results: list[dict]
+    context_chars: int = 3200
 
 
 @app.post("/api/summary")
@@ -261,7 +262,7 @@ async def api_summary(body: SummaryRequest):
 
     async def event_stream():
         async for token in _ollama.stream_summary(
-            body.q, body.results, OLLAMA_MODEL, OLLAMA_URL
+            body.q, body.results, OLLAMA_MODEL, OLLAMA_URL, body.context_chars
         ):
             yield f"data: {_json.dumps({'token': token})}\n\n"
         yield "data: [DONE]\n\n"

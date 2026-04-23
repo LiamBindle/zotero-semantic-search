@@ -310,6 +310,16 @@
       color: var(--text);
     }
     #coll-select:focus { border-color: var(--red); background: var(--surface); }
+    #limit-select, #min-score-select {
+      padding: 0.38rem 0.45rem;
+      font-size: 0.82rem;
+      border: 1.5px solid var(--border);
+      border-radius: var(--r-sm);
+      outline: none;
+      background: var(--bg);
+      color: var(--text);
+    }
+    #limit-select:focus, #min-score-select:focus { border-color: var(--red); background: var(--surface); }
     .search-btn {
       margin-left: auto;
       background: var(--red);
@@ -374,9 +384,15 @@
     }
     #hyde-note.on { display: inline; }
 
+    #summarize-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.7rem;
+    }
     #summarize-btn {
       display: flex;
-      width: 100%;
+      flex: 1;
       background: none;
       border: 1px dashed #c7d2fe;
       color: #6366f1;
@@ -386,13 +402,24 @@
       font-size: 0.82rem;
       font-family: inherit;
       transition: all .15s;
-      margin-bottom: 0.7rem;
       align-items: center;
       justify-content: flex-start;
       gap: 0.45rem;
     }
     #summarize-btn:hover { background: #eef2ff; border-color: #818cf8; }
     #summarize-btn:disabled { opacity: .5; cursor: default; }
+    #context-select {
+      font-size: 0.75rem;
+      font-family: inherit;
+      color: var(--text-md);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 0.3rem 0.4rem;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #context-select:focus { outline: none; border-color: #818cf8; }
 
     /* ── AI Summary ──────────────────────────────────────────────────── */
     .summary-card {
@@ -643,6 +670,21 @@
       <select id="coll-select">
         <option value="">All collections</option>
       </select>
+      <span class="coll-label">Results:</span>
+      <select id="limit-select">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+      <span class="coll-label">Min score:</span>
+      <select id="min-score-select">
+        <option value="0.50">0.50</option>
+        <option value="0.55" selected>0.55</option>
+        <option value="0.60">0.60</option>
+        <option value="0.65">0.65</option>
+        <option value="0.70">0.70</option>
+      </select>
       <button class="search-btn" onclick="doSearch()">Search →</button>
     </div>
   </div>
@@ -654,7 +696,17 @@
       <span id="hyde-note">· AI-expanded context used</span>
     </div>
     <div id="summary-area" style="display:none">
-      <button id="summarize-btn" onclick="fetchSummary()">✦ Summarize with AI</button>
+      <div id="summarize-row">
+        <button id="summarize-btn" onclick="fetchSummary()">✦ Summarize with AI</button>
+        <select id="context-select" title="Total source text sent to the AI">
+          <option value="1000">~1k chars</option>
+          <option value="2000">~2k chars</option>
+          <option value="3200" selected>~3k chars</option>
+          <option value="6000">~6k chars</option>
+          <option value="12000">~12k chars</option>
+          <option value="24000">~24k chars</option>
+        </select>
+      </div>
       <div id="summary-card" class="summary-card" style="display:none">
         <div class="summary-header-row">
           <div id="summary-gen-spinner" class="summary-gen-spinner"></div>
@@ -823,7 +875,9 @@
     btn.textContent = 'Searching…';
 
     try {
-      const params = new URLSearchParams({ q, limit: 12 });
+      const limit    = document.getElementById('limit-select').value;
+      const minScore = document.getElementById('min-score-select').value;
+      const params = new URLSearchParams({ q, limit, min_score: minScore });
       if (coll) params.set('collection', coll);
       const data = await fetch('/api/search?' + params)
                          .then(r => r.json()).catch(() => ({ results: [] }));
@@ -890,7 +944,11 @@
       const resp = await fetch('/api/summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: _lastPrompt, results: visibleResults }),
+        body: JSON.stringify({
+          q: _lastPrompt,
+          results: visibleResults,
+          context_chars: parseInt(document.getElementById('context-select').value, 10),
+        }),
       });
       if (!resp.ok) throw new Error('API error');
 
