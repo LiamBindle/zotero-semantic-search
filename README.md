@@ -31,9 +31,65 @@ Zotero Semantic Search indexes your Zotero library using dense vector embeddings
 
 ---
 
-## Quick Start
+## Installation
 
-**Requirements:** Docker and Docker Compose. Your Zotero library must be at `~/Zotero` (the default location). Runs on Linux (x86-64), macOS (Intel and Apple Silicon), and Windows.
+Zotero Semantic Search runs inside Docker, so the only thing you need to install is Docker itself. Supported platforms: **Linux** (x86-64), **macOS** (Intel and Apple Silicon), **Windows**.
+
+### Step 1 — Install Docker Desktop
+
+| Platform | Download |
+|---|---|
+| macOS | [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/) |
+| Windows | [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) (requires WSL2 — the installer sets this up) |
+| Linux | [Docker Engine](https://docs.docker.com/engine/install/) + [Docker Compose plugin](https://docs.docker.com/compose/install/) |
+
+### Step 2 — Create a `docker-compose.yml` file
+
+Create a new folder anywhere on your computer and save the following as `docker-compose.yml` inside it:
+
+```yaml
+services:
+  zotero-search:
+    image: ghcr.io/your-username/zotero-semantic-search:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/Zotero:/zotero:ro
+      - chroma-data:/data/chroma
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
+```
+
+This assumes your Zotero library is in the default location (`~/Zotero` on macOS/Linux, `%USERPROFILE%\Zotero` on Windows — Docker resolves `~` correctly on all platforms).
+
+**macOS only:** Docker Desktop on macOS may not support the `NET_ADMIN` capability required for network isolation. If the container fails to start, add the following under the service and read [Privacy & Network Isolation](#privacy--network-isolation) to understand what this trades away:
+
+```yaml
+    environment:
+      - DISABLE_NETWORK_ISOLATION=1
+```
+
+### Step 3 — Start the app
+
+Open a terminal in the folder containing `docker-compose.yml` and run:
+
+```bash
+docker compose up
+```
+
+The first run will pull the image (~5–6 GB). Once running, open **http://localhost:8000** in your browser.
+
+The first search against a collection will trigger indexing for any unindexed files. Subsequent searches are fast.
+
+> **Offline by design:** see [Privacy & Network Isolation](#privacy--network-isolation) for details on how outbound traffic is blocked.
+
+### Building from source
+
+If you'd prefer to build the image yourself (e.g. to use different models):
 
 ```bash
 git clone https://github.com/your-username/zotero-semantic-search.git
@@ -41,12 +97,6 @@ cd zotero-semantic-search
 docker compose build   # ~10 min first time — downloads models into the image
 docker compose up
 ```
-
-Then open **http://localhost:8000** in your browser.
-
-The first search against a collection will trigger indexing for any unindexed files. Subsequent searches are fast.
-
-> **Offline by design:** see [Privacy & Network Isolation](#privacy--network-isolation) for details on how outbound traffic is blocked.
 
 ---
 
