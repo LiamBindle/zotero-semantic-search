@@ -2,7 +2,7 @@
 
 **Semantic search and AI summaries for your Zotero library — fully offline.**
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+ [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 ![Search demo placeholder](assets/semantic-search.gif)
 <!-- Replace with a GIF of a search query returning results -->
@@ -153,4 +153,4 @@ Query
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+This project is licensed under the [GNU Affero GPL v3.0 (AGPL)](LICENSE).
