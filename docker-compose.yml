@@ -1,0 +1,14 @@
+services:
+  zotero-search:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/Zotero:/zotero:ro
+      - chroma-data:/data/chroma
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+
+volumes:
+  chroma-data:

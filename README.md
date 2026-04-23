@@ -1,0 +1,156 @@
+# Zotero Semantic Search
+
+**Semantic search and AI summaries for your Zotero library — fully offline.**
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
+![Search demo placeholder](docs/demo-search.gif)
+<!-- Replace with a GIF of a search query returning results -->
+
+Zotero Semantic Search indexes your Zotero library using dense vector embeddings and lets you search by meaning rather than keywords. An optional local LLM synthesises a cited summary from the matching papers — all processing happens on your machine with no data leaving your network.
+
+---
+
+## Features
+
+- **Semantic search** — find papers by concept, not just keyword match; uses [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) (768-dim, 8192-token context)
+- **AI summaries** — after a search, generate a cited synthesis of the visible results using a local LLM via [Ollama](https://ollama.com)
+- **HyDE retrieval** — the LLM first drafts a hypothetical matching passage, then searches by that embedding for higher-quality results
+- **Fully offline** — no API keys, no cloud services; the Docker image ships with all models baked in and network egress is disabled at the container level
+- **Collection-scoped search** — filter by any Zotero collection; indexing runs on-demand for only the selected collection
+- **Incremental indexing** — only unindexed files are embedded on each search; PDFs, DOCX, PPTX, XLSX, HTML, RTF, and more are supported
+
+---
+
+## Screenshots
+
+### Semantic search across your library
+![Search results placeholder](docs/screenshot-results.png)
+<!-- Replace with a screenshot of the results cards -->
+
+### AI summary with cited references
+![AI summary placeholder](docs/screenshot-summary.gif)
+<!-- Replace with a GIF of the summary streaming in -->
+
+---
+
+## Quick Start
+
+**Requirements:** Docker and Docker Compose. Your Zotero library must be at `~/Zotero` (the default location).
+
+```bash
+git clone https://github.com/your-username/zotero-semantic-search.git
+cd zotero-semantic-search
+docker compose build   # ~10 min first time — downloads models into the image
+docker compose up
+```
+
+Then open **http://localhost:8000** in your browser.
+
+The first search against a collection will trigger indexing for any unindexed files. Subsequent searches are fast.
+
+> **Offline by design:** see [Privacy & Network Isolation](#privacy--network-isolation) for details on how outbound traffic is blocked.
+
+---
+
+## Privacy & Network Isolation
+
+This tool is designed for use with private document libraries. Two independent layers prevent data from leaving the container:
+
+**1. iptables egress block (hard enforcement)**
+
+The container entrypoint installs iptables rules before any process starts:
+
+```
+OUTPUT -o lo          → ACCEPT   # loopback: app ↔ Ollama on localhost
+OUTPUT ESTABLISHED    → ACCEPT   # allow responses to inbound connections (port 8000)
+OUTPUT (everything else) → DROP  # block all new outbound connections
+```
+
+This is enforced at the Linux kernel level inside the container's network namespace. No process — regardless of what library it uses or what code it runs — can initiate a new outbound TCP/UDP connection. The `NET_ADMIN` capability in `docker-compose.yml` grants permission to set these rules without requiring a fully privileged container.
+
+**2. Telemetry opt-out environment variables (defence in depth)**
+
+The following variables are set automatically by the pixi environment activation (in `pyproject.toml`) and therefore apply both inside Docker and during local development:
+
+| Variable | Library |
+|---|---|
+| `HF_HUB_OFFLINE=1` | fastembed — prevents HuggingFace Hub model update checks |
+| `TRANSFORMERS_OFFLINE=1` | HuggingFace Transformers offline mode |
+| `ANONYMIZED_TELEMETRY=false` | ChromaDB telemetry |
+| `OLLAMA_NO_ANALYTICS=1` | Ollama usage analytics |
+| `DO_NOT_TRACK=1` | General opt-out signal honoured by some tools |
+
+All model weights (embedding model and LLM) are downloaded into the Docker image at build time, so the running container has no reason to make any outbound requests.
+
+**Verifying isolation**
+
+To confirm the egress block is active, you can run a connectivity test from inside the container:
+
+```bash
+docker compose exec zotero-search curl -s --max-time 5 https://example.com
+# Expected: curl: (28) Connection timed out  (or immediate drop, not a response)
+```
+
+---
+
+## Local Development (without Docker)
+
+Requires [pixi](https://pixi.sh).
+
+```bash
+pixi run dev   # starts uvicorn with --reload on http://localhost:8000
+```
+
+Ensure Ollama is running separately (`ollama serve`) if you want AI features.
+
+Telemetry opt-outs (HuggingFace Hub offline mode, ChromaDB, Ollama analytics) are applied automatically by the pixi environment activation.
+
+---
+
+## Configuration
+
+The following environment variables can be set in `docker-compose.yml` to override defaults:
+
+| Variable | Default | Description |
+|---|---|---|
+| `ZOTERO_DB` | `/zotero/zotero.sqlite` | Path to your Zotero SQLite database |
+| `ZOTERO_STORAGE` | `/zotero/storage` | Path to your Zotero attachment storage |
+| `CHROMA_PATH` | `/data/chroma` | Where ChromaDB persists the vector index |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `llama3.2` | LLM used for HyDE, query expansion, and summaries |
+| `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | fastembed embedding model |
+
+To build the image with different models baked in:
+
+```bash
+docker compose build \
+  --build-arg OLLAMA_MODEL=llama3.1:8b \
+  --build-arg EMBED_MODEL=nomic-ai/nomic-embed-text-v1.5
+```
+
+---
+
+## How It Works
+
+```
+Query
+  │
+  ├─ Ollama (HyDE) ──► hypothetical passage ──► embed ──► ChromaDB query
+  │                                                              │
+  └─ (fallback) ──────────────────────────► embed ──► ChromaDB query
+                                                              │
+                                                         ranked results
+                                                              │
+                                                    Ollama (summary) ──► streamed response
+```
+
+1. **Indexing** — attachments are extracted to text chunks (~2000 chars each), embedded with fastembed, and stored in a ChromaDB cosine-similarity collection
+2. **Search** — the query (or a LLM-generated hypothetical document) is embedded and the nearest chunks are retrieved; results are deduplicated to one card per paper
+3. **Summary** — visible result cards are sent to Ollama with a source-citation prompt; tokens stream back via Server-Sent Events
+
+---
+
+## License
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
