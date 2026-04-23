@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zotero Semantic Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f4f4f6;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #c0392b;
+      color: white;
+      padding: 0.9rem 2rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 600; }
+    header .model-tag {
+      font-size: 0.75rem;
+      background: rgba(255,255,255,0.2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+    }
+
+    main { max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
+
+    /* ── Index banner ── */
+    .banner {
+      background: #fff8e1;
+      border: 1px solid #ffc107;
+      border-radius: 8px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .banner p { margin-bottom: 0.7rem; line-height: 1.5; }
+    .banner button {
+      background: #c0392b;
+      color: white;
+      border: none;
+      padding: 0.55rem 1.3rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+    .banner button:hover { background: #a93226; }
+
+    /* ── Progress ── */
+    .progress-wrap { margin-bottom: 1rem; display: none; }
+    .progress-track {
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 0.4rem;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #c0392b;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    #status-text { font-size: 0.82rem; color: #666; min-height: 1.2em; }
+
+    /* ── Search bar ── */
+    .search-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.8rem;
+    }
+    .search-row input {
+      flex: 1;
+      padding: 0.65rem 0.9rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      outline: none;
+    }
+    .search-row input:focus { border-color: #c0392b; box-shadow: 0 0 0 2px #f5c6c2; }
+    .search-row button {
+      background: #2c3e50;
+      color: white;
+      border: none;
+      padding: 0.65rem 1.3rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 500;
+    }
+    .search-row button:hover { background: #1a252f; }
+
+    /* ── Collection filter ── */
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1.2rem;
+      flex-wrap: wrap;
+    }
+    .filter-row label { font-size: 0.85rem; color: #555; white-space: nowrap; }
+    .filter-row select {
+      flex: 1;
+      min-width: 180px;
+      padding: 0.35rem 0.6rem;
+      font-size: 0.9rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      outline: none;
+    }
+    .filter-row select:focus { border-color: #c0392b; }
+
+    /* ── Results ── */
+    #results { margin-top: 0.5rem; }
+
+    .result-card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      margin-bottom: 0.85rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.35rem;
+      gap: 0.5rem;
+    }
+    .card-title { font-size: 1rem; font-weight: 600; line-height: 1.4; }
+    .score-badge {
+      flex-shrink: 0;
+      background: #eaf4ec;
+      color: #2e7d32;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    .card-meta { font-size: 0.82rem; color: #777; margin-bottom: 0.6rem; }
+
+    /* location + Ctrl+F fragment */
+    .fragment-wrap { position: relative; }
+    .location-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 0.18rem 0.5rem;
+      border-radius: 3px;
+      margin-bottom: 0.4rem;
+      font-weight: 500;
+    }
+    .fragment {
+      background: #fffde7;
+      border-left: 3px solid #fbc02d;
+      border-radius: 0 4px 4px 0;
+      padding: 0.65rem 0.8rem;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #333;
+      white-space: pre-wrap;
+      word-break: break-word;
+      cursor: text;
+      user-select: text;
+    }
+    .fragment-hint {
+      font-size: 0.72rem;
+      color: #999;
+      margin-top: 0.3rem;
+    }
+
+    .card-collections {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.6rem;
+    }
+    .coll-tag {
+      display: inline-block;
+      background: #f0f0f0;
+      border-radius: 3px;
+      padding: 0.1rem 0.4rem;
+      margin-right: 0.3rem;
+    }
+
+    .empty-state { color: #888; font-size: 0.95rem; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Zotero Semantic Search</h1>
+    <span class="model-tag">{{ embed_model }}</span>
+  </header>
+
+  <main>
+    {% if needs_indexing %}
+    <div class="banner" id="index-banner">
+      <p><strong>Your library has not been indexed yet.</strong><br>
+         Click below to extract text from your documents and build the search index.
+         Everything runs inside Docker — your documents never leave this machine.</p>
+      <button onclick="startIndexing()">Index My Library</button>
+    </div>
+    {% endif %}
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div id="status-text"></div>
+    </div>
+
+    <div class="search-row">
+      <input id="query" type="text" placeholder="Search your Zotero library…"
+             onkeydown="if(event.key==='Enter') doSearch()">
+      <button onclick="doSearch()">Search</button>
+    </div>
+
+    {% if collections %}
+    <div class="filter-row">
+      <label for="coll-select">Collection:</label>
+      <select id="coll-select">
+        <option value="">All collections</option>
+        {% for c in collections %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div id="results"></div>
+  </main>
+
+  <script>
+    let _pollTimer = null;
+
+    // ── Indexing ───────────────────────────────────────────────────────────────
+
+    async function startIndexing() {
+      document.getElementById('index-banner')?.remove();
+      showProgress(true);
+      setStatus('Starting…');
+
+      const resp = await fetch('/api/index', { method: 'POST' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        setStatus('Error: ' + (err.error || resp.statusText));
+        return;
+      }
+      pollStatus();
+    }
+
+    function pollStatus() {
+      _pollTimer = setInterval(async () => {
+        const s = await fetch('/api/index/status').then(r => r.json()).catch(() => null);
+        if (!s) return;
+
+        const pct = s.total > 0 ? Math.round(s.current / s.total * 100) : 0;
+        document.getElementById('progress-fill').style.width = pct + '%';
+        setStatus(s.message + (s.total > 0 ? ` (${s.current} / ${s.total})` : ''));
+
+        if (!s.running) {
+          clearInterval(_pollTimer);
+          if (s.last_result?.error) {
+            setStatus('Indexing failed: ' + s.last_result.error);
+          } else if (s.last_result) {
+            setStatus(`Done — ${s.last_result.vectors_stored} vectors stored across ${s.last_result.items_processed} items.`);
+            setTimeout(() => location.reload(), 1800);
+          }
+        }
+      }, 800);
+    }
+
+    function showProgress(on) {
+      document.getElementById('progress-wrap').style.display = on ? 'block' : 'none';
+    }
+    function setStatus(msg) {
+      document.getElementById('status-text').textContent = msg;
+    }
+
+    // ── Search ─────────────────────────────────────────────────────────────────
+
+    async function doSearch() {
+      const q = document.getElementById('query').value.trim();
+      if (!q) return;
+
+      const coll = document.getElementById('coll-select')?.value || '';
+      const params = new URLSearchParams({ q, limit: 10 });
+      if (coll) params.set('collection', coll);
+
+      const data = await fetch('/api/search?' + params).then(r => r.json());
+      renderResults(data.results);
+    }
+
+    function renderResults(results) {
+      const el = document.getElementById('results');
+      if (!results || results.length === 0) {
+        el.innerHTML = '<p class="empty-state">No results found. Try different search terms.</p>';
+        return;
+      }
+
+      el.innerHTML = results.map(r => {
+        const pct = Math.round(r.score * 100);
+        const colls = (r.collections || '')
+          .split('; ')
+          .filter(Boolean)
+          .map(c => `<span class="coll-tag">${esc(c)}</span>`)
+          .join('');
+
+        const locationLabel = r.location.startsWith('Page ')
+          ? r.location
+          : '§ ' + r.location;
+
+        return `
+          <div class="result-card">
+            <div class="card-header">
+              <div class="card-title">${esc(r.title)}</div>
+              <span class="score-badge">${pct}% match</span>
+            </div>
+            <div class="card-meta">
+              ${esc(r.authors || 'Unknown authors')}${r.year ? ' · ' + esc(r.year) : ''}
+            </div>
+            <div class="fragment-wrap">
+              <div class="location-badge">${esc(locationLabel)}</div>
+              <div class="fragment">${esc(r.text)}</div>
+              <div class="fragment-hint">Select text above and Ctrl+F in your document to locate it.</div>
+            </div>
+            ${colls ? `<div class="card-collections">${colls}</div>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

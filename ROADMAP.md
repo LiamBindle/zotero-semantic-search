@@ -1,0 +1,9 @@
+- Self contained executable?
+- Self contained UI (electron?)
+- Get rid of old files (requirements, dockerfile, etc.)
+- Automatically index any missing files (or changes) since the last time the app indexed the zotero collection
+    - During this, I want the app to show a pretty progress bar
+- Implement a clean UI
+    - Should automatically show indexing progress upon load (auto index stuff that hasn't been indexed yet)
+    - Has a search bar
+    - Shows a list of results. We are looking for semantic search, so we want to display properly formatted quotes and citations (this is for zotero compatibility after all). We need a way to 
