@@ -96,13 +96,8 @@ def _make_id(item_id: int, attach_key: str, chunk_idx: int) -> str:
 
 # ── Main indexing entry point ──────────────────────────────────────────────────
 
-def run_indexing(
-    db_path: str,
-    storage_dir: str,
-    model: "TextEmbedding",
-    chroma_collection,
-    progress_cb=None,
-) -> dict:
+def _resolvable_items(db_path: str, storage_dir: str) -> list[tuple]:
+    """Return [(item_id, attach_key, attach_path, row), ...] for all attachments that exist on disk."""
     conn, tmp_db = _open_db(db_path)
     try:
         items = conn.execute(_ITEMS_SQL).fetchall()
@@ -122,11 +117,48 @@ def run_indexing(
     for r in coll_rows:
         coll_by_item.setdefault(r["itemID"], []).append(r["collectionName"])
 
-    total = len(items)
+    result = []
+    for row in items:
+        attach_path = _resolve_path(row["attach_path"], storage_dir, row["attach_key"])
+        if attach_path:
+            result.append((row["itemID"], row["attach_key"], attach_path,
+                           row, creators_by_item, coll_by_item))
+    return result
+
+
+def get_pending_count(db_path: str, storage_dir: str, chroma_collection) -> dict:
+    """Return {"pending": N, "total": N} — attachments not yet in the index."""
+    candidates = _resolvable_items(db_path, storage_dir)
+    if not candidates:
+        return {"pending": 0, "total": 0}
+    first_chunk_ids = [_make_id(item_id, attach_key, 0)
+                       for item_id, attach_key, *_ in candidates]
+    existing = set(chroma_collection.get(ids=first_chunk_ids)["ids"])
+    pending = sum(1 for cid in first_chunk_ids if cid not in existing)
+    return {"pending": pending, "total": len(candidates)}
+
+
+def run_indexing(
+    db_path: str,
+    storage_dir: str,
+    model: "TextEmbedding",
+    chroma_collection,
+    progress_cb=None,
+    incremental: bool = True,
+) -> dict:
+    candidates = _resolvable_items(db_path, storage_dir)
+
+    if incremental and candidates:
+        first_chunk_ids = [_make_id(item_id, attach_key, 0)
+                           for item_id, attach_key, *_ in candidates]
+        existing = set(chroma_collection.get(ids=first_chunk_ids)["ids"])
+        candidates = [c for c, cid in zip(candidates, first_chunk_ids)
+                      if cid not in existing]
+
+    total = len(candidates)
     vectors_stored = 0
 
-    for idx, row in enumerate(items):
-        item_id = row["itemID"]
+    for idx, (item_id, attach_key, attach_path, row, creators_by_item, coll_by_item) in enumerate(candidates):
         title = row["title"] or "Untitled"
         year = (row["year"] or "")[:4]
         authors = "; ".join(creators_by_item.get(item_id, []))
@@ -134,11 +166,6 @@ def run_indexing(
 
         if progress_cb:
             progress_cb(idx, total, f"Indexing: {title}")
-
-        attach_path = _resolve_path(row["attach_path"], storage_dir, row["attach_key"])
-        if not attach_path:
-            log.debug("Skipping item %d — attachment not found", item_id)
-            continue
 
         chunks = extract(attach_path)
         if not chunks:
@@ -152,7 +179,7 @@ def run_indexing(
 
         ids_buf, embs_buf, metas_buf = [], [], []
         for chunk_idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
-            ids_buf.append(_make_id(item_id, row["attach_key"], chunk_idx))
+            ids_buf.append(_make_id(item_id, attach_key, chunk_idx))
             embs_buf.append(vec)
             metas_buf.append({
                 "item_id": str(item_id),
@@ -162,6 +189,8 @@ def run_indexing(
                 "collection_names": coll_str,
                 "location": chunk["location"],
                 "text": chunk["text"],
+                "attach_key": attach_key,
+                "attach_path": attach_path,
             })
             vectors_stored += 1
 

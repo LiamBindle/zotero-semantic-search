@@ -1,6 +1,9 @@
 import logging
 import os
+import subprocess
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from threading import Thread
 
 import chromadb
@@ -10,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from indexer import CHROMA_COLLECTION, get_collections, run_indexing
+from indexer import CHROMA_COLLECTION, get_collections, get_pending_count, run_indexing
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -19,11 +22,14 @@ logging.basicConfig(level=logging.INFO,
 # telemetry is already disabled via anonymized_telemetry=False
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
-ZOTERO_DB = os.environ.get("ZOTERO_DB", "/zotero/zotero.sqlite")
-ZOTERO_STORAGE = os.environ.get("ZOTERO_STORAGE", "/zotero/storage")
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
-MODEL_CACHE = os.environ.get("FASTEMBED_CACHE_PATH", "/model_cache")
-CHROMA_PATH = os.environ.get("CHROMA_PATH", "/chroma_data")
+_HOME = Path.home()
+_ZOTERO_DEFAULT = _HOME / "Zotero"
+
+ZOTERO_DB      = os.environ.get("ZOTERO_DB",            str(_ZOTERO_DEFAULT / "zotero.sqlite"))
+ZOTERO_STORAGE = os.environ.get("ZOTERO_STORAGE",       str(_ZOTERO_DEFAULT / "storage"))
+EMBED_MODEL    = os.environ.get("EMBED_MODEL",           "BAAI/bge-small-en-v1.5")
+MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-semantic-search" / "models"))
+CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-semantic-search" / "chroma"))
 
 # ── Global singletons ──────────────────────────────────────────────────────────
 
@@ -72,13 +78,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    needs_indexing = _chroma_col.count() == 0
-    collections = [] if needs_indexing else get_collections(_chroma_col)
-    return templates.TemplateResponse(request, "index.html", {
-        "needs_indexing": needs_indexing,
-        "collections": collections,
-        "embed_model": EMBED_MODEL,
-    })
+    return templates.TemplateResponse(request, "index.html", {"embed_model": EMBED_MODEL})
 
 
 # ── Search ─────────────────────────────────────────────────────────────────────
@@ -135,12 +135,17 @@ async def api_collections():
 
 # ── Indexing ───────────────────────────────────────────────────────────────────
 
+@app.get("/api/index/pending")
+async def index_pending():
+    return get_pending_count(ZOTERO_DB, ZOTERO_STORAGE, _chroma_col)
+
+
 @app.post("/api/index")
-async def start_index():
+async def start_index(incremental: bool = True):
     if _index_state["running"]:
         return JSONResponse({"error": "already running"}, status_code=409)
 
-    def _run():
+    def _run(incremental: bool):
         _index_state.update({
             "running": True, "current": 0, "total": 0,
             "message": "Starting...", "last_result": None,
@@ -157,6 +162,7 @@ async def start_index():
                 model=_model,
                 chroma_collection=_chroma_col,
                 progress_cb=_progress,
+                incremental=incremental,
             )
             _index_state["last_result"] = result
         except Exception as e:
@@ -165,10 +171,17 @@ async def start_index():
         finally:
             _index_state["running"] = False
 
-    Thread(target=_run, daemon=True).start()
+    Thread(target=_run, args=(incremental,), daemon=True).start()
     return {"status": "started"}
 
 
 @app.get("/api/index/status")
 async def index_status():
     return dict(_index_state)
+
+
+@app.get("/api/open")
+async def open_file(path: str):
+    cmd = "open" if sys.platform == "darwin" else "xdg-open"
+    subprocess.Popen([cmd, path])
+    return {"ok": True}

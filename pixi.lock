@@ -1559,7 +1559,7 @@ packages:
 - pypi: ./
   name: local-semantic-search
   version: 0.1.0
-  sha256: 15a9ee92718247514a98373c1e3310826422e14797cb6466a5e766c1ff87d8c5
+  sha256: 23ea1889055e46672e32013ed15d7770d6d0dc1480fba3fead5be8aa159e76d4
   requires_python: '>=3.11'
   editable: true
 - pypi: https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl
