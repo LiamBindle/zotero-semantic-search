@@ -282,11 +282,43 @@
     }
     .search-btn:hover { background: var(--red-dk); }
 
+    /* ── Shared spinners ─────────────────────────────────────────────────── */
+    .search-btn, #suggest-btn, #summarize-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+    }
+    .search-btn::before,
+    #suggest-btn::before,
+    #summarize-btn::before {
+      content: '';
+      display: none;
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: spin-anim .65s linear infinite;
+    }
+    .search-btn::before {
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+    }
+    #suggest-btn::before,
+    #summarize-btn::before {
+      width: 10px; height: 10px;
+      border: 1.5px solid var(--border-md);
+      border-top-color: var(--text-md);
+    }
+    .search-btn.loading::before,
+    #suggest-btn.loading::before,
+    #summarize-btn.loading::before { display: block; }
+    @keyframes spin-anim { to { transform: rotate(360deg); } }
+
     /* ── Results ─────────────────────────────────────────────────────── */
     #results-wrap { display: none; }
     .results-meta {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 0.75rem;
       margin-bottom: 0.8rem;
       padding: 0 0.1rem;
@@ -299,6 +331,62 @@
       display: none;
     }
     #hyde-note.on { display: inline; }
+
+    #summarize-btn {
+      display: flex;
+      width: 100%;
+      background: none;
+      border: 1px dashed #c7d2fe;
+      color: #6366f1;
+      padding: 0.6rem 1rem;
+      border-radius: var(--r-lg);
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-family: inherit;
+      transition: all .15s;
+      margin-bottom: 0.7rem;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.45rem;
+    }
+    #summarize-btn:hover { background: #eef2ff; border-color: #818cf8; }
+    #summarize-btn:disabled { opacity: .5; cursor: default; }
+
+    /* ── AI Summary ──────────────────────────────────────────────────── */
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid #e0e7ff;
+      border-left: 3px solid #6366f1;
+      border-radius: var(--r-lg);
+      padding: 1rem 1.2rem;
+      margin-bottom: 0.7rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .summary-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #6366f1;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 0.55rem;
+    }
+    .summary-spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid #e0e7ff;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin-anim .65s linear infinite;
+      margin: 0.2rem 0 0.5rem;
+    }
+    .summary-spinner.on { display: block; }
+    #summary-text {
+      font-size: 0.88rem;
+      line-height: 1.75;
+      color: var(--text);
+    }
+    .cite-link { color: #6366f1; text-decoration: none; font-weight: 500; }
+    .cite-link:hover { text-decoration: underline; }
 
     /* result card */
     .card {
@@ -455,7 +543,7 @@
 
     <div class="query-foot">
       <span class="query-hint">Ctrl+Enter to search</span>
-      <button id="suggest-btn" onclick="suggestQuery()">✦ Suggest query</button>
+      <button id="suggest-btn" onclick="suggestPrompt()">✦ Suggest prompt</button>
     </div>
 
     <details class="tips">
@@ -499,6 +587,13 @@
       <span id="result-count"></span>
       <span id="hyde-note">· AI-expanded context used</span>
     </div>
+    <div id="summary-area" style="display:none">
+      <button id="summarize-btn" onclick="fetchSummary()">✦ Summarize with AI</button>
+      <div id="summary-card" class="summary-card" style="display:none">
+        <div class="summary-label">✦ AI Summary</div>
+        <div id="summary-text"></div>
+      </div>
+    </div>
     <div id="results"></div>
   </div>
 
@@ -506,6 +601,9 @@
 
 <script>
   let _pollTimer = null;
+  let _ollamaAvailable = false;
+  let _lastPrompt = '';
+  let _resultMap = new Map();  // 'result-N' → result object
 
   // ── Startup ──────────────────────────────────────────────────────────────────
 
@@ -530,6 +628,7 @@
   async function checkStatus() {
     const d = await fetch('/api/status').then(r => r.json()).catch(() => null);
     if (d?.ollama?.available) {
+      _ollamaAvailable = true;
       document.getElementById('suggest-btn').style.display = 'inline-block';
     }
   }
@@ -604,19 +703,21 @@
     }
   }
 
-  // ── Query suggestion ─────────────────────────────────────────────────────────
+  // ── Prompt suggestion ────────────────────────────────────────────────────────
 
-  async function suggestQuery() {
+  async function suggestPrompt() {
     const btn = document.getElementById('suggest-btn');
     const ta  = document.getElementById('query');
     const q   = ta.value.trim();
     if (!q) return;
+    btn.classList.add('loading');
     btn.disabled = true;
-    btn.textContent = '…';
+    btn.textContent = 'Suggesting…';
     const d = await fetch('/api/expand?' + new URLSearchParams({ q }))
                     .then(r => r.json()).catch(() => null);
+    btn.classList.remove('loading');
     btn.disabled = false;
-    btn.textContent = '✦ Suggest query';
+    btn.textContent = '✦ Suggest prompt';
     if (d?.expanded) {
       ta.value = d.expanded;
       autoResize(ta);
@@ -628,8 +729,15 @@
   async function doSearch() {
     const q = document.getElementById('query').value.trim();
     if (!q) return;
+    _lastPrompt = q;
+
+    document.getElementById('summary-area').style.display = 'none';
+    document.getElementById('summarize-btn').style.display = 'flex';
+    document.getElementById('summary-card').style.display = 'none';
+    document.getElementById('summary-text').innerHTML = '';
 
     const btn = document.querySelector('.search-btn');
+    btn.classList.add('loading');
     btn.disabled = true;
     btn.textContent = 'Searching…';
 
@@ -637,15 +745,21 @@
       const coll = document.getElementById('coll-select').value;
       const params = new URLSearchParams({ q, limit: 12 });
       if (coll) params.set('collection', coll);
-      const data = await fetch('/api/search?' + params).then(r => r.json()).catch(() => ({ results: [] }));
+      const data = await fetch('/api/search?' + params)
+                         .then(r => r.json()).catch(() => ({ results: [] }));
       renderResults(data.results, data.search_context);
+      if (_ollamaAvailable && data.results?.length > 0) {
+        document.getElementById('summary-area').style.display = 'block';
+      }
     } finally {
+      btn.classList.remove('loading');
       btn.disabled = false;
       btn.textContent = 'Search →';
     }
   }
 
   function renderResults(results, searchContext) {
+    _resultMap.clear();
     const wrap  = document.getElementById('results-wrap');
     const el    = document.getElementById('results');
     const cnt   = document.getElementById('result-count');
@@ -657,14 +771,86 @@
     if (!results || results.length === 0) {
       cnt.textContent = '';
       el.innerHTML = '<p class="empty">No results found above the relevance threshold.<br>'
-                   + 'Try rephrasing your query as a complete sentence or statement.</p>';
+                   + 'Try rephrasing your prompt as a complete sentence or statement.</p>';
       return;
     }
 
     cnt.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
     el.innerHTML = '';
-    results.forEach(r => el.appendChild(makeCard(r)));
+    results.forEach((r, i) => {
+      const card = makeCard(r);
+      card.id = 'result-' + i;
+      _resultMap.set('result-' + i, r);
+      el.appendChild(card);
+    });
   }
+
+  // ── AI Summary ───────────────────────────────────────────────────────────────
+
+  async function fetchSummary() {
+    const btn    = document.getElementById('summarize-btn');
+    const card   = document.getElementById('summary-card');
+    const textEl = document.getElementById('summary-text');
+
+    const visibleResults = [...document.querySelectorAll('#results .card')]
+      .map(c => _resultMap.get(c.id))
+      .filter(Boolean);
+    if (!visibleResults.length) return;
+
+    // Hide button, show card (empty while generating)
+    btn.style.display = 'none';
+    card.style.display = 'block';
+    textEl.innerHTML = '';
+
+    let accumulated = '';
+    try {
+      const resp = await fetch('/api/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: _lastPrompt, results: visibleResults }),
+      });
+      if (!resp.ok) throw new Error('API error');
+
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let doneReading = false;
+
+      while (!doneReading) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') { doneReading = true; break; }
+          try {
+            const { token } = JSON.parse(payload);
+            accumulated += token;
+            textEl.innerHTML = formatSummary(accumulated);
+          } catch {}
+        }
+      }
+    } catch {}
+
+    // Guarantee final render; restore button if nothing was generated
+    if (accumulated) {
+      textEl.innerHTML = formatSummary(accumulated);
+    } else {
+      card.style.display = 'none';
+      btn.style.display = 'flex';
+    }
+  }
+
+  function formatSummary(text) {
+    return esc(text).replace(/\[(\d+)\]/g, (m, n) =>
+      `<a href="#result-${parseInt(n) - 1}" class="cite-link">[${n}]</a>`
+    );
+  }
+
+  // ── Result cards ─────────────────────────────────────────────────────────────
 
   function makeCard(r) {
     const pct = Math.round(r.score * 100);

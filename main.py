@@ -1,3 +1,4 @@
+import json as _json
 import logging
 import os
 import subprocess
@@ -10,8 +11,9 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from fastembed import TextEmbedding
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 import ollama as _ollama
 from indexer import CHROMA_COLLECTION, get_collections, get_pending_count, run_indexing
@@ -225,3 +227,25 @@ async def open_file(path: str):
     cmd = "open" if sys.platform == "darwin" else "xdg-open"
     subprocess.Popen([cmd, path])
     return {"ok": True}
+
+
+# ── AI Summary ─────────────────────────────────────────────────────────────────
+
+class SummaryRequest(BaseModel):
+    q: str
+    results: list[dict]
+
+
+@app.post("/api/summary")
+async def api_summary(body: SummaryRequest):
+    if not _ollama_available or not body.q.strip() or not body.results:
+        return JSONResponse({"error": "unavailable"}, status_code=503)
+
+    async def event_stream():
+        async for token in _ollama.stream_summary(
+            body.q, body.results, OLLAMA_MODEL, OLLAMA_URL
+        ):
+            yield f"data: {_json.dumps({'token': token})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
