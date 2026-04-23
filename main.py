@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+import ollama as _ollama
 from indexer import CHROMA_COLLECTION, get_collections, get_pending_count, run_indexing
 
 log = logging.getLogger(__name__)
@@ -27,14 +28,17 @@ _ZOTERO_DEFAULT = _HOME / "Zotero"
 
 ZOTERO_DB      = os.environ.get("ZOTERO_DB",            str(_ZOTERO_DEFAULT / "zotero.sqlite"))
 ZOTERO_STORAGE = os.environ.get("ZOTERO_STORAGE",       str(_ZOTERO_DEFAULT / "storage"))
-EMBED_MODEL    = os.environ.get("EMBED_MODEL",           "BAAI/bge-small-en-v1.5")
+EMBED_MODEL    = os.environ.get("EMBED_MODEL",           "nomic-ai/nomic-embed-text-v1.5")
 MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-semantic-search" / "models"))
 CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-semantic-search" / "chroma"))
+OLLAMA_URL     = os.environ.get("OLLAMA_URL",            "http://localhost:11434")
+OLLAMA_MODEL   = os.environ.get("OLLAMA_MODEL",          "llama3.2")
 
 # ── Global singletons ──────────────────────────────────────────────────────────
 
 _model: TextEmbedding | None = None
 _chroma_col = None
+_ollama_available: bool = False
 
 _index_state: dict = {
     "running": False,
@@ -47,12 +51,10 @@ _index_state: dict = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _chroma_col
+    global _model, _chroma_col, _ollama_available
 
     log.info("Loading embedding model '%s' from %s ...", EMBED_MODEL, MODEL_CACHE)
     _model = TextEmbedding(EMBED_MODEL, cache_dir=MODEL_CACHE)
-    # Warm up: run one embedding to initialise ONNX runtime buffers now,
-    # so startup memory is representative and there are no surprises later.
     _ = list(_model.embed(["warmup"]))
     log.info("Model loaded.")
 
@@ -66,6 +68,13 @@ async def lifespan(app: FastAPI):
     )
     log.info("ChromaDB ready. Collection '%s' has %d vectors.",
              CHROMA_COLLECTION, _chroma_col.count())
+
+    _ollama_available = _ollama.check_available(OLLAMA_URL)
+    if _ollama_available:
+        log.info("Ollama available at %s (model: %s) — HyDE and query expansion enabled.",
+                 OLLAMA_URL, OLLAMA_MODEL)
+    else:
+        log.info("Ollama not detected at %s — standard embedding search only.", OLLAMA_URL)
 
     yield
 
@@ -81,19 +90,38 @@ async def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {"embed_model": EMBED_MODEL})
 
 
+# ── Status ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/status")
+async def api_status():
+    return {
+        "ollama": {"available": _ollama_available, "model": OLLAMA_MODEL},
+    }
+
+
 # ── Search ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/search")
-async def search(q: str = "", collection: str = "", limit: int = 10):
+async def search(q: str = "", collection: str = "",
+                 limit: int = 12, min_score: float = 0.45):
     if not q.strip():
-        return {"results": []}
+        return {"results": [], "search_context": None}
 
-    # fastembed returns a generator; take the first (and only) embedding
-    vector = next(_model.embed([q])).tolist()
+    # HyDE: if Ollama available, embed a hypothetical matching document instead of q
+    search_context: str | None = None
+    if _ollama_available:
+        hyp = await _ollama.hyde_text(q, OLLAMA_MODEL, OLLAMA_URL)
+        if hyp:
+            search_context = hyp
+            vector = next(_model.embed([hyp])).tolist()
+        else:
+            vector = next(_model.embed([q])).tolist()
+    else:
+        vector = next(_model.embed([q])).tolist()
 
     raw = _chroma_col.query(
         query_embeddings=[vector],
-        n_results=min(50, max(limit * 5, 20)),
+        n_results=min(100, max(limit * 8, 40)),
         include=["metadatas", "distances"],
     )
 
@@ -101,6 +129,9 @@ async def search(q: str = "", collection: str = "", limit: int = 10):
     seen: set[str] = set()
 
     for meta, dist in zip(raw["metadatas"][0], raw["distances"][0]):
+        score = round(1.0 - (dist / 2.0), 4)
+        if score < min_score:
+            continue
         item_id = meta["item_id"]
         if item_id in seen:
             continue
@@ -109,8 +140,6 @@ async def search(q: str = "", collection: str = "", limit: int = 10):
             if collection not in coll_set:
                 continue
         seen.add(item_id)
-        # ChromaDB cosine distance: 0 = identical, 2 = opposite → convert to similarity
-        score = round(1.0 - (dist / 2.0), 4)
         hits.append({
             "score": score,
             "title": meta["title"],
@@ -119,11 +148,22 @@ async def search(q: str = "", collection: str = "", limit: int = 10):
             "location": meta["location"],
             "text": meta["text"],
             "collections": meta["collection_names"],
+            "attach_path": meta.get("attach_path", ""),
         })
         if len(hits) >= limit:
             break
 
-    return {"results": hits}
+    return {"results": hits, "search_context": search_context}
+
+
+# ── Query expansion ────────────────────────────────────────────────────────────
+
+@app.get("/api/expand")
+async def api_expand(q: str = ""):
+    if not q.strip() or not _ollama_available:
+        return {"expanded": None}
+    expanded = await _ollama.expand_query(q, OLLAMA_MODEL, OLLAMA_URL)
+    return {"expanded": expanded}
 
 
 # ── Collections ────────────────────────────────────────────────────────────────

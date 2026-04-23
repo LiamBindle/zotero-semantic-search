@@ -8,233 +8,387 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --red: #c0392b;
-      --red-dk: #a93226;
-      --bg: #f0f2f5;
-      --card: #ffffff;
-      --border: #e2e6ea;
-      --text: #1a1a2e;
-      --muted: #6c757d;
-      --accent-blue: #e8f0fe;
-      --accent-blue-text: #1a73e8;
+      --bg:         #f1f5f9;
+      --surface:    #ffffff;
+      --border:     #e2e8f0;
+      --border-md:  #cbd5e1;
+      --text:       #0f172a;
+      --text-md:    #475569;
+      --text-muted: #94a3b8;
+      --red:        #dc2626;
+      --red-dk:     #b91c1c;
+      --blue-bg:    #eff6ff;
+      --blue-text:  #1d4ed8;
+      --amber-bar:  #f59e0b;
+      --green-bg:   #d1fae5;
+      --green-text: #065f46;
+      --amber-bg:   #fef3c7;
+      --amber-text: #92400e;
+      --r-sm: 6px;
+      --r-md: 10px;
+      --r-lg: 12px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+      --shadow-md: 0 3px 10px rgba(0,0,0,.09);
     }
 
     body {
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
     }
 
-    /* ── Header ── */
+    /* ── Header ──────────────────────────────────────────────────────── */
     header {
-      background: var(--red);
-      color: white;
-      padding: 0.75rem 1.5rem;
+      background: #0f172a;
+      color: #fff;
+      height: 52px;
+      padding: 0 1.5rem;
       display: flex;
       align-items: center;
       gap: 0.75rem;
+      border-bottom: 2px solid var(--red);
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
-    header h1 { font-size: 1.15rem; font-weight: 600; flex: 1; }
-    .model-tag {
-      font-size: 0.72rem;
-      background: rgba(255,255,255,0.18);
-      padding: 0.2rem 0.5rem;
+    .h-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      flex: 1;
+      letter-spacing: -0.01em;
+    }
+    .h-logo svg { color: var(--red); flex-shrink: 0; }
+    .h-badge {
+      font-size: 0.68rem;
+      font-family: ui-monospace, monospace;
+      background: rgba(255,255,255,0.08);
+      color: #94a3b8;
+      padding: 0.18rem 0.5rem;
       border-radius: 4px;
     }
-    .reindex-btn {
-      background: rgba(255,255,255,0.15);
-      color: white;
-      border: 1px solid rgba(255,255,255,0.35);
-      padding: 0.3rem 0.8rem;
-      border-radius: 5px;
+    .h-btn {
+      font-size: 0.75rem;
+      background: transparent;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      padding: 0.25rem 0.7rem;
+      border-radius: var(--r-sm);
       cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 500;
+      transition: color .15s, border-color .15s;
     }
-    .reindex-btn:hover { background: rgba(255,255,255,0.25); }
+    .h-btn:hover { color: #fff; border-color: #64748b; }
 
-    /* ── Layout ── */
-    main { max-width: 880px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 1.75rem 1rem 4rem;
+    }
 
-    /* ── Progress ── */
-    #progress-section {
-      background: var(--card);
+    /* ── Progress ────────────────────────────────────────────────────── */
+    #progress {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.2rem 1.4rem;
-      margin-bottom: 1.25rem;
+      border-radius: var(--r-md);
+      padding: 0.8rem 1.1rem;
+      margin-bottom: 1.1rem;
       display: none;
+      box-shadow: var(--shadow-sm);
     }
-    #progress-section.visible { display: block; }
-    .progress-label {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin-bottom: 0.6rem;
+    #progress.on { display: block; }
+    .prog-row {
       display: flex;
       justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.45rem;
     }
-    .progress-track {
-      height: 10px;
-      background: #e9ecef;
-      border-radius: 5px;
+    #prog-msg  { font-size: 0.8rem; color: var(--text-md); }
+    #prog-cnt  { font-size: 0.73rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .prog-track {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
       overflow: hidden;
     }
-    .progress-fill {
+    #prog-fill {
       height: 100%;
       background: var(--red);
       width: 0%;
-      border-radius: 5px;
-      transition: width 0.4s ease;
+      border-radius: 2px;
+      transition: width .5s ease;
     }
-    .progress-fill.indeterminate {
-      width: 35%;
-      animation: indeterminate 1.4s ease-in-out infinite;
+    #prog-fill.pulse {
+      width: 30% !important;
+      animation: sweep 1.6s ease-in-out infinite;
     }
-    @keyframes indeterminate {
-      0%   { transform: translateX(-100%); }
-      100% { transform: translateX(320%); }
+    @keyframes sweep {
+      0%   { transform: translateX(-120%); }
+      100% { transform: translateX(380%); }
     }
 
-    /* ── Search ── */
-    .search-wrap {
-      background: var(--card);
+    /* ── Search card ─────────────────────────────────────────────────── */
+    .search-card {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.2rem;
-      margin-bottom: 1rem;
+      border-radius: var(--r-lg);
+      padding: 1.4rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-sm);
     }
-    .search-row {
-      display: flex;
-      gap: 0.5rem;
-      margin-bottom: 0.75rem;
-    }
-    .search-row input {
-      flex: 1;
-      padding: 0.6rem 0.9rem;
+    .search-heading {
       font-size: 1rem;
-      border: 1.5px solid var(--border);
-      border-radius: 7px;
-      outline: none;
-      background: var(--bg);
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.65rem;
     }
-    .search-row input:focus { border-color: var(--red); background: white; }
-    .search-row button {
-      background: var(--red);
-      color: white;
-      border: none;
-      padding: 0.6rem 1.3rem;
-      border-radius: 7px;
-      cursor: pointer;
+
+    /* textarea */
+    #query {
+      width: 100%;
+      min-height: 80px;
+      padding: 0.7rem 0.9rem;
       font-size: 0.95rem;
-      font-weight: 500;
+      font-family: inherit;
+      line-height: 1.55;
+      border: 1.5px solid var(--border);
+      border-radius: var(--r-md);
+      resize: none;
+      outline: none;
+      color: var(--text);
+      background: var(--bg);
+      transition: border-color .15s, box-shadow .15s, background .15s;
+      overflow-y: hidden;
     }
-    .search-row button:hover { background: var(--red-dk); }
-    .filter-row {
+    #query:focus {
+      border-color: var(--red);
+      background: var(--surface);
+      box-shadow: 0 0 0 3px rgba(220,38,38,.08);
+    }
+    #query::placeholder { color: var(--text-muted); }
+
+    /* textarea footer row */
+    .query-foot {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.4rem;
+    }
+    .query-hint { font-size: 0.7rem; color: var(--text-muted); }
+    #suggest-btn {
+      font-size: 0.75rem;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-md);
+      padding: 0.22rem 0.65rem;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all .15s;
+      display: none; /* shown when Ollama available */
+    }
+    #suggest-btn:hover { border-color: var(--border-md); color: var(--text); }
+    #suggest-btn:disabled { opacity: .5; cursor: default; }
+
+    /* tips */
+    details.tips {
+      margin-top: 0.85rem;
+    }
+    details.tips > summary {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      user-select: none;
+    }
+    details.tips > summary::-webkit-details-marker { display: none; }
+    details.tips > summary::before {
+      content: '›';
+      font-size: 1rem;
+      line-height: 1;
+      display: inline-block;
+      transition: transform .15s;
+    }
+    details.tips[open] > summary::before { transform: rotate(90deg); }
+    details.tips > summary:hover { color: var(--text-md); }
+
+    .tips-body {
+      margin-top: 0.7rem;
+      padding: 0.95rem 1.1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      font-size: 0.8rem;
+      color: var(--text-md);
+      line-height: 1.65;
+    }
+    .tips-body p { margin-bottom: 0.5rem; }
+    .tips-body p:last-child { margin-bottom: 0; }
+    .tip-pair {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 0.45rem 0.7rem;
+      margin: 0.4rem 0;
+      font-size: 0.78rem;
+      flex-wrap: wrap;
+    }
+    .tip-bad  { color: var(--text-muted); text-decoration: line-through; }
+    .tip-arr  { color: var(--border-md); flex-shrink: 0; }
+    .tip-good { color: var(--text); font-style: italic; }
+
+    /* search controls */
+    .search-controls {
       display: flex;
       align-items: center;
       gap: 0.6rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
     }
-    .filter-row label { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
-    .filter-row select {
+    .coll-label { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+    #coll-select {
       flex: 1;
-      max-width: 320px;
-      padding: 0.3rem 0.55rem;
-      font-size: 0.88rem;
+      max-width: 260px;
+      padding: 0.38rem 0.6rem;
+      font-size: 0.85rem;
       border: 1.5px solid var(--border);
-      border-radius: 6px;
+      border-radius: var(--r-sm);
       outline: none;
       background: var(--bg);
+      color: var(--text);
     }
-    .filter-row select:focus { border-color: var(--red); background: white; }
-    #result-count { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+    #coll-select:focus { border-color: var(--red); background: var(--surface); }
+    .search-btn {
+      margin-left: auto;
+      background: var(--red);
+      color: #fff;
+      border: none;
+      padding: 0.45rem 1.3rem;
+      border-radius: var(--r-sm);
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .search-btn:hover { background: var(--red-dk); }
 
-    /* ── Result cards ── */
-    #results { margin-top: 0.25rem; }
-
-    .result-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.1rem 0.9rem;
+    /* ── Results ─────────────────────────────────────────────────────── */
+    #results-wrap { display: none; }
+    .results-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
       margin-bottom: 0.8rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-      position: relative;
+      padding: 0 0.1rem;
     }
+    #result-count { font-size: 0.8rem; font-weight: 500; color: var(--text-muted); }
+    #hyde-note {
+      font-size: 0.73rem;
+      color: var(--text-muted);
+      font-style: italic;
+      display: none;
+    }
+    #hyde-note.on { display: inline; }
+
+    /* result card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 1.05rem 1.15rem 0.9rem;
+      margin-bottom: 0.7rem;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow .15s;
+    }
+    .card:hover { box-shadow: var(--shadow-md); }
 
     .card-top {
       display: flex;
       align-items: flex-start;
-      gap: 0.5rem;
-      margin-bottom: 0.25rem;
+      gap: 0.65rem;
+      margin-bottom: 0.55rem;
     }
-    .card-citation { flex: 1; min-width: 0; }
-    .citation-byline {
-      font-size: 0.8rem;
-      color: var(--muted);
+    .card-meta { flex: 1; min-width: 0; }
+    .card-byline {
+      font-size: 0.76rem;
+      color: var(--text-muted);
       margin-bottom: 0.18rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .card-title {
-      font-size: 0.95rem;
+      font-size: 0.93rem;
       font-weight: 600;
-      line-height: 1.4;
       color: var(--text);
+      line-height: 1.4;
     }
 
-    .card-actions {
+    .card-right {
       display: flex;
       align-items: center;
-      gap: 0.4rem;
+      gap: 0.3rem;
       flex-shrink: 0;
     }
-    .score-badge {
-      font-size: 0.72rem;
+    .score {
+      font-size: 0.7rem;
       font-weight: 700;
-      padding: 0.22rem 0.5rem;
+      padding: 0.2rem 0.45rem;
       border-radius: 4px;
+      letter-spacing: 0.01em;
     }
-    .score-high  { background: #d4edda; color: #155724; }
-    .score-mid   { background: #fff3cd; color: #856404; }
-    .score-low   { background: #e9ecef; color: #6c757d; }
-    .dismiss-btn {
+    .s-hi { background: var(--green-bg); color: var(--green-text); }
+    .s-md { background: var(--amber-bg); color: var(--amber-text); }
+    .s-lo { background: #f1f5f9; color: var(--text-muted); }
+    .dismiss {
       background: none;
       border: none;
-      color: #bbb;
-      font-size: 1rem;
+      color: #cbd5e1;
+      font-size: 1.05rem;
       line-height: 1;
       cursor: pointer;
-      padding: 0.1rem 0.25rem;
+      padding: 0.1rem 0.2rem;
       border-radius: 3px;
+      transition: color .12s, background .12s;
     }
-    .dismiss-btn:hover { color: #666; background: #f0f0f0; }
+    .dismiss:hover { color: var(--text-md); background: var(--bg); }
 
     /* fragment */
-    .fragment-row { margin-top: 0.65rem; }
     .loc-badge {
-      display: inline-block;
-      font-size: 0.72rem;
-      background: var(--accent-blue);
-      color: var(--accent-blue-text);
-      padding: 0.16rem 0.45rem;
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.68rem;
+      font-weight: 500;
+      background: var(--blue-bg);
+      color: var(--blue-text);
+      padding: 0.14rem 0.42rem;
       border-radius: 3px;
       margin-bottom: 0.35rem;
-      font-weight: 500;
     }
     .fragment {
-      background: #fffde7;
-      border-left: 3px solid #f9a825;
-      border-radius: 0 5px 5px 0;
-      padding: 0.6rem 0.8rem;
-      font-size: 0.84rem;
-      line-height: 1.65;
-      color: #333;
+      background: #fffbeb;
+      border-left: 3px solid var(--amber-bar);
+      border-radius: 0 var(--r-sm) var(--r-sm) 0;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.83rem;
+      line-height: 1.7;
+      color: #44403c;
       white-space: pre-wrap;
       word-break: break-word;
-      user-select: text;
     }
 
     /* card footer */
-    .card-footer {
+    .card-foot {
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -242,223 +396,313 @@
       flex-wrap: wrap;
     }
     .open-btn {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       background: none;
       border: 1px solid var(--border);
-      color: var(--muted);
-      padding: 0.2rem 0.6rem;
-      border-radius: 4px;
+      color: var(--text-muted);
+      padding: 0.18rem 0.55rem;
+      border-radius: var(--r-sm);
       cursor: pointer;
-      text-decoration: none;
+      transition: all .12s;
     }
-    .open-btn:hover { border-color: #aaa; color: var(--text); }
-    .coll-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-left: auto; }
-    .coll-tag {
-      font-size: 0.72rem;
-      background: #f0f0f0;
-      color: #555;
+    .open-btn:hover { border-color: var(--border-md); color: var(--text-md); }
+    .tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-left: auto; }
+    .tag {
+      font-size: 0.68rem;
+      background: var(--bg);
+      color: var(--text-muted);
+      padding: 0.14rem 0.4rem;
       border-radius: 3px;
-      padding: 0.15rem 0.4rem;
     }
 
-    .empty-state { color: var(--muted); font-size: 0.92rem; padding: 1rem 0; }
+    .empty { color: var(--text-muted); font-size: 0.88rem; padding: 0.75rem 0; line-height: 1.6; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Zotero Semantic Search</h1>
-    <span class="model-tag">{{ embed_model }}</span>
-    <button class="reindex-btn" onclick="reindexAll()">Re-index All</button>
-  </header>
 
-  <main>
-    <div id="progress-section">
-      <div class="progress-label">
-        <span id="progress-msg">Checking library…</span>
-        <span id="progress-counts"></span>
-      </div>
-      <div class="progress-track">
-        <div class="progress-fill indeterminate" id="progress-fill"></div>
-      </div>
+<header>
+  <div class="h-logo">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    Zotero Semantic Search
+  </div>
+  <span class="h-badge">{{ embed_model }}</span>
+  <button class="h-btn" onclick="reindexAll()">Re-index library</button>
+</header>
+
+<main>
+
+  <!-- Indexing progress -->
+  <div id="progress">
+    <div class="prog-row">
+      <span id="prog-msg">Indexing…</span>
+      <span id="prog-cnt"></span>
+    </div>
+    <div class="prog-track"><div id="prog-fill" class="pulse"></div></div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-card">
+    <div class="search-heading">Find relevant sources</div>
+
+    <textarea id="query" rows="3"
+      placeholder="Describe the concept, finding, or argument you're looking for…"
+      oninput="autoResize(this)"
+      onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();doSearch()}"
+    ></textarea>
+
+    <div class="query-foot">
+      <span class="query-hint">Ctrl+Enter to search</span>
+      <button id="suggest-btn" onclick="suggestQuery()">✦ Suggest query</button>
     </div>
 
-    <div class="search-wrap">
-      <div class="search-row">
-        <input id="query" type="text" placeholder="Search your Zotero library…"
-               onkeydown="if(event.key==='Enter') doSearch()">
-        <button onclick="doSearch()">Search</button>
+    <details class="tips">
+      <summary>Tips for effective semantic search</summary>
+      <div class="tips-body">
+        <p>Semantic search finds documents by <strong>meaning</strong>, not exact words.
+           Write a sentence or phrase that describes what you want to find — as if explaining
+           it to a colleague.</p>
+        <div class="tip-pair">
+          <span class="tip-bad">PM2.5 health</span>
+          <span class="tip-arr">→</span>
+          <span class="tip-good">Long-term exposure to fine particulate matter is associated with increased cardiovascular mortality</span>
+        </div>
+        <div class="tip-pair">
+          <span class="tip-bad">parallel computing models</span>
+          <span class="tip-arr">→</span>
+          <span class="tip-good">Domain decomposition techniques for distributing atmospheric model computation across parallel processors</span>
+        </div>
+        <div class="tip-pair">
+          <span class="tip-bad">emissions regulation</span>
+          <span class="tip-arr">→</span>
+          <span class="tip-good">Regulatory thresholds governing acceptable particulate matter levels from industrial point sources</span>
+        </div>
+        <p>Use the <strong>collection filter</strong> below to narrow results to a specific Zotero folder.
+           If <strong>✦ Suggest query</strong> appears, click it to auto-expand keywords into a full semantic query.</p>
       </div>
-      <div class="filter-row">
-        <label for="coll-select">Collection:</label>
-        <select id="coll-select">
-          <option value="">All collections</option>
-        </select>
-        <span id="result-count"></span>
-      </div>
-    </div>
+    </details>
 
+    <div class="search-controls">
+      <span class="coll-label">Collection:</span>
+      <select id="coll-select">
+        <option value="">All collections</option>
+      </select>
+      <button class="search-btn" onclick="doSearch()">Search →</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-wrap">
+    <div class="results-meta">
+      <span id="result-count"></span>
+      <span id="hyde-note">· AI-expanded context used</span>
+    </div>
     <div id="results"></div>
-  </main>
+  </div>
 
-  <script>
-    let _pollTimer = null;
+</main>
 
-    // ── Startup ────────────────────────────────────────────────────────────────
+<script>
+  let _pollTimer = null;
 
-    document.addEventListener('DOMContentLoaded', async () => {
-      loadCollections();
-      const pending = await fetch('/api/index/pending').then(r => r.json()).catch(() => null);
-      if (pending && pending.pending > 0) {
-        showProgress(true);
-        setProgress(null, pending.total, `Indexing ${pending.pending} new document${pending.pending === 1 ? '' : 's'}…`);
-        const resp = await fetch('/api/index', { method: 'POST' });
-        if (resp.ok) pollStatus();
-        else hideProgressAfterDelay();
-      }
+  // ── Startup ──────────────────────────────────────────────────────────────────
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadCollections();
+    checkStatus();
+    checkPending();
+  });
+
+  async function loadCollections() {
+    const d = await fetch('/api/collections').then(r => r.json()).catch(() => null);
+    if (!d) return;
+    const sel = document.getElementById('coll-select');
+    sel.innerHTML = '<option value="">All collections</option>';
+    d.collections.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
     });
+  }
 
-    async function loadCollections() {
-      const data = await fetch('/api/collections').then(r => r.json()).catch(() => null);
-      if (!data) return;
-      const sel = document.getElementById('coll-select');
-      sel.innerHTML = '<option value="">All collections</option>';
-      data.collections.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c; opt.textContent = c;
-        sel.appendChild(opt);
-      });
+  async function checkStatus() {
+    const d = await fetch('/api/status').then(r => r.json()).catch(() => null);
+    if (d?.ollama?.available) {
+      document.getElementById('suggest-btn').style.display = 'inline-block';
     }
+  }
 
-    // ── Indexing ───────────────────────────────────────────────────────────────
-
-    function showProgress(on) {
-      document.getElementById('progress-section').classList.toggle('visible', on);
-    }
-
-    function setProgress(current, total, msg) {
-      document.getElementById('progress-msg').textContent = msg;
-      const fill = document.getElementById('progress-fill');
-      const counts = document.getElementById('progress-counts');
-      if (current !== null && total > 0) {
-        const pct = Math.round(current / total * 100);
-        fill.classList.remove('indeterminate');
-        fill.style.width = pct + '%';
-        counts.textContent = `${current} / ${total}`;
-      } else {
-        fill.classList.add('indeterminate');
-        fill.style.width = '';
-        counts.textContent = total > 0 ? `0 / ${total}` : '';
-      }
-    }
-
-    function pollStatus() {
-      _pollTimer = setInterval(async () => {
-        const s = await fetch('/api/index/status').then(r => r.json()).catch(() => null);
-        if (!s) return;
-
-        setProgress(s.current || null, s.total, s.message);
-
-        if (!s.running) {
-          clearInterval(_pollTimer);
-          _pollTimer = null;
-          if (s.last_result?.error) {
-            setProgress(0, 0, 'Indexing failed: ' + s.last_result.error);
-          } else if (s.last_result) {
-            setProgress(s.last_result.items_processed, s.last_result.items_processed,
-              `Done — ${s.last_result.vectors_stored} vectors across ${s.last_result.items_processed} documents`);
-            loadCollections();
-            setTimeout(() => showProgress(false), 3000);
-          }
-        }
-      }, 800);
-    }
-
-    function hideProgressAfterDelay() {
-      setTimeout(() => showProgress(false), 3000);
-    }
-
-    async function reindexAll() {
-      if (!confirm('Re-index the entire library from scratch? This may take several minutes.')) return;
-      if (_pollTimer) clearInterval(_pollTimer);
+  async function checkPending() {
+    const d = await fetch('/api/index/pending').then(r => r.json()).catch(() => null);
+    if (d && d.pending > 0) {
       showProgress(true);
-      setProgress(null, 0, 'Starting full re-index…');
-      const resp = await fetch('/api/index?incremental=false', { method: 'POST' });
-      if (resp.ok) pollStatus();
-      else {
-        const err = await resp.json().catch(() => ({}));
-        setProgress(0, 0, 'Error: ' + (err.error || resp.statusText));
-      }
+      setProgress(null, d.total, `Indexing ${d.pending} new document${d.pending === 1 ? '' : 's'}…`);
+      const r = await fetch('/api/index', { method: 'POST' });
+      if (r.ok) pollStatus();
     }
+  }
 
-    // ── Search ─────────────────────────────────────────────────────────────────
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }
 
-    async function doSearch() {
-      const q = document.getElementById('query').value.trim();
-      if (!q) return;
+  // ── Indexing ─────────────────────────────────────────────────────────────────
+
+  function showProgress(on) {
+    document.getElementById('progress').classList.toggle('on', on);
+  }
+
+  function setProgress(current, total, msg) {
+    document.getElementById('prog-msg').textContent = msg;
+    const fill = document.getElementById('prog-fill');
+    const cnt  = document.getElementById('prog-cnt');
+    if (current !== null && total > 0) {
+      fill.classList.remove('pulse');
+      fill.style.width = Math.round(current / total * 100) + '%';
+      cnt.textContent = `${current} / ${total}`;
+    } else {
+      fill.classList.add('pulse');
+      fill.style.width = '';
+      cnt.textContent = total > 0 ? `0 / ${total}` : '';
+    }
+  }
+
+  function pollStatus() {
+    _pollTimer = setInterval(async () => {
+      const s = await fetch('/api/index/status').then(r => r.json()).catch(() => null);
+      if (!s) return;
+      setProgress(s.current || null, s.total, s.message);
+      if (!s.running) {
+        clearInterval(_pollTimer); _pollTimer = null;
+        if (s.last_result?.error) {
+          setProgress(0, 0, 'Indexing failed: ' + s.last_result.error);
+        } else if (s.last_result) {
+          setProgress(
+            s.last_result.items_processed, s.last_result.items_processed,
+            `Done — ${s.last_result.vectors_stored.toLocaleString()} vectors across ${s.last_result.items_processed} documents`
+          );
+          loadCollections();
+          setTimeout(() => showProgress(false), 4000);
+        }
+      }
+    }, 800);
+  }
+
+  async function reindexAll() {
+    if (!confirm('Re-index the entire library from scratch?\n\nThis reprocesses every document and may take several minutes.')) return;
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    showProgress(true);
+    setProgress(null, 0, 'Starting full re-index…');
+    const r = await fetch('/api/index?incremental=false', { method: 'POST' });
+    if (r.ok) pollStatus();
+    else {
+      const e = await r.json().catch(() => ({}));
+      setProgress(0, 0, 'Error: ' + (e.error || r.statusText));
+    }
+  }
+
+  // ── Query suggestion ─────────────────────────────────────────────────────────
+
+  async function suggestQuery() {
+    const btn = document.getElementById('suggest-btn');
+    const ta  = document.getElementById('query');
+    const q   = ta.value.trim();
+    if (!q) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    const d = await fetch('/api/expand?' + new URLSearchParams({ q }))
+                    .then(r => r.json()).catch(() => null);
+    btn.disabled = false;
+    btn.textContent = '✦ Suggest query';
+    if (d?.expanded) {
+      ta.value = d.expanded;
+      autoResize(ta);
+    }
+  }
+
+  // ── Search ───────────────────────────────────────────────────────────────────
+
+  async function doSearch() {
+    const q = document.getElementById('query').value.trim();
+    if (!q) return;
+
+    const btn = document.querySelector('.search-btn');
+    btn.disabled = true;
+    btn.textContent = 'Searching…';
+
+    try {
       const coll = document.getElementById('coll-select').value;
-      const params = new URLSearchParams({ q, limit: 10 });
+      const params = new URLSearchParams({ q, limit: 12 });
       if (coll) params.set('collection', coll);
-      const data = await fetch('/api/search?' + params).then(r => r.json());
-      renderResults(data.results);
+      const data = await fetch('/api/search?' + params).then(r => r.json()).catch(() => ({ results: [] }));
+      renderResults(data.results, data.search_context);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Search →';
+    }
+  }
+
+  function renderResults(results, searchContext) {
+    const wrap  = document.getElementById('results-wrap');
+    const el    = document.getElementById('results');
+    const cnt   = document.getElementById('result-count');
+    const note  = document.getElementById('hyde-note');
+
+    wrap.style.display = 'block';
+    note.classList.toggle('on', !!searchContext);
+
+    if (!results || results.length === 0) {
+      cnt.textContent = '';
+      el.innerHTML = '<p class="empty">No results found above the relevance threshold.<br>'
+                   + 'Try rephrasing your query as a complete sentence or statement.</p>';
+      return;
     }
 
-    function renderResults(results) {
-      const el = document.getElementById('results');
-      document.getElementById('result-count').textContent =
-        results && results.length ? results.length + ' result' + (results.length === 1 ? '' : 's') : '';
+    cnt.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
+    el.innerHTML = '';
+    results.forEach(r => el.appendChild(makeCard(r)));
+  }
 
-      if (!results || results.length === 0) {
-        el.innerHTML = '<p class="empty-state">No results found.</p>';
-        return;
-      }
-      el.innerHTML = '';
-      results.forEach(r => el.appendChild(makeCard(r)));
-    }
+  function makeCard(r) {
+    const pct = Math.round(r.score * 100);
+    const cls = pct >= 75 ? 's-hi' : pct >= 55 ? 's-md' : 's-lo';
+    const loc = r.location.startsWith('Page ') ? r.location : '§ ' + r.location;
+    const colls = (r.collections || '').split(';').map(s => s.trim()).filter(Boolean);
 
-    function makeCard(r) {
-      const pct = Math.round(r.score * 100);
-      const scoreClass = pct >= 80 ? 'score-high' : pct >= 60 ? 'score-mid' : 'score-low';
-
-      const locLabel = r.location.startsWith('Page ') ? r.location : '§ ' + r.location;
-
-      const colls = (r.collections || '').split(';').map(s => s.trim()).filter(Boolean);
-      const collHtml = colls.map(c => `<span class="coll-tag">${esc(c)}</span>`).join('');
-
-      const card = document.createElement('div');
-      card.className = 'result-card';
-      card.innerHTML = `
-        <div class="card-top">
-          <div class="card-citation">
-            <div class="citation-byline">${esc(r.authors || 'Unknown authors')}${r.year ? ' (' + esc(r.year) + ')' : ''}</div>
-            <div class="card-title">${esc(r.title)}</div>
-          </div>
-          <div class="card-actions">
-            <span class="score-badge ${scoreClass}">${pct}%</span>
-            <button class="dismiss-btn" title="Dismiss" onclick="this.closest('.result-card').remove()">×</button>
-          </div>
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-meta">
+          <div class="card-byline">${esc(r.authors || 'Unknown authors')}${r.year ? ' · ' + esc(r.year) : ''}</div>
+          <div class="card-title">${esc(r.title)}</div>
         </div>
-        <div class="fragment-row">
-          <div class="loc-badge">${esc(locLabel)}</div>
-          <div class="fragment">${esc(r.text)}</div>
+        <div class="card-right">
+          <span class="score ${cls}">${pct}%</span>
+          <button class="dismiss" title="Dismiss" onclick="this.closest('.card').remove()">×</button>
         </div>
-        <div class="card-footer">
-          ${r.attach_path ? `<button class="open-btn" onclick="openFile(${JSON.stringify(r.attach_path)})">Open file</button>` : ''}
-          ${collHtml ? `<div class="coll-tags">${collHtml}</div>` : ''}
-        </div>`;
-      return card;
-    }
+      </div>
+      <div class="loc-badge">${esc(loc)}</div>
+      <div class="fragment">${esc(r.text)}</div>
+      <div class="card-foot">
+        ${r.attach_path ? `<button class="open-btn" onclick="openFile(${JSON.stringify(r.attach_path)})">↗ Open file</button>` : ''}
+        ${colls.length ? `<div class="tags">${colls.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>` : ''}
+      </div>`;
+    return card;
+  }
 
-    async function openFile(path) {
-      await fetch('/api/open?' + new URLSearchParams({ path }));
-    }
+  async function openFile(path) {
+    await fetch('/api/open?' + new URLSearchParams({ path }));
+  }
 
-    function esc(s) {
-      return String(s ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-  </script>
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+</script>
 </body>
 </html>

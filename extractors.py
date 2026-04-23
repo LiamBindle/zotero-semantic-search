@@ -36,6 +36,21 @@ def _ws(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# DOIs appear only in reference list entries, never in body text.
+_DOI_RE = re.compile(r'doi\.org/10\.|\bdoi:\s*10\.', re.IGNORECASE)
+
+
+def _is_ref_block(text: str) -> bool:
+    """Return True if this block is a bibliography entry (contains a DOI).
+
+    Year-density heuristics are intentionally omitted: they have unacceptable
+    false-positive risk for policy/regulation documents that list many dates,
+    and the penalty for excluding a real paragraph is worse than including a
+    reference entry.  DOI detection alone is essentially noise-free.
+    """
+    return bool(_DOI_RE.search(text))
+
+
 def _sliding_window(text: str,
                     size: int = CHUNK_CHARS,
                     overlap: int = OVERLAP_CHARS) -> list[str]:
@@ -70,8 +85,15 @@ def _extract_pdf(path: str) -> list[dict]:
     doc = fitz.open(path)
     try:
         for page_num in range(len(doc)):
-            for piece in _sliding_window(doc[page_num].get_text("text")):
-                chunks.append({"text": piece, "location": f"Page {page_num + 1}"})
+            location = f"Page {page_num + 1}"
+            for block in doc[page_num].get_text("blocks"):
+                if block[6] != 0:  # skip image blocks
+                    continue
+                text = _ws(block[4])
+                if _is_ref_block(text):
+                    continue
+                for piece in _sliding_window(text):
+                    chunks.append({"text": piece, "location": location})
     finally:
         doc.close()
     return chunks
@@ -141,6 +163,8 @@ def _chunks_from_html_bytes(data: bytes) -> list[dict]:
     for is_heading, text in _walk_html(start):
         if is_heading:
             current_heading = text
+            continue
+        if _is_ref_block(text):
             continue
         for piece in _sliding_window(text):
             chunks.append({"text": piece, "location": current_heading})
