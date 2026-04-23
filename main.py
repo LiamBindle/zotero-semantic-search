@@ -39,6 +39,7 @@ OLLAMA_MODEL   = os.environ.get("OLLAMA_MODEL",          "llama3.2")
 # ── Global singletons ──────────────────────────────────────────────────────────
 
 _model: TextEmbedding | None = None
+_chroma_client = None
 _chroma_col = None
 _ollama_available: bool = False
 
@@ -53,18 +54,18 @@ _index_state: dict = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _chroma_col, _ollama_available
+    global _model, _chroma_client, _chroma_col, _ollama_available
 
     log.info("Loading embedding model '%s' from %s ...", EMBED_MODEL, MODEL_CACHE)
     _model = TextEmbedding(EMBED_MODEL, cache_dir=MODEL_CACHE)
     _ = list(_model.embed(["warmup"]))
     log.info("Model loaded.")
 
-    client = chromadb.PersistentClient(
+    _chroma_client = chromadb.PersistentClient(
         path=CHROMA_PATH,
         settings=ChromaSettings(anonymized_telemetry=False),
     )
-    _chroma_col = client.get_or_create_collection(
+    _chroma_col = _chroma_client.get_or_create_collection(
         name=CHROMA_COLLECTION,
         metadata={"hnsw:space": "cosine"},
     )
@@ -178,16 +179,18 @@ async def api_collections():
 # ── Indexing ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/index/pending")
-async def index_pending():
-    return get_pending_count(ZOTERO_DB, ZOTERO_STORAGE, _chroma_col)
+async def index_pending(collection: str = ""):
+    return get_pending_count(ZOTERO_DB, ZOTERO_STORAGE, _chroma_col, collection or None)
 
 
 @app.post("/api/index")
-async def start_index(incremental: bool = True):
+async def start_index(incremental: bool = True, collection: str = ""):
     if _index_state["running"]:
         return JSONResponse({"error": "already running"}, status_code=409)
 
-    def _run(incremental: bool):
+    coll = collection or None
+
+    def _run(incremental: bool, coll: str | None):
         _index_state.update({
             "running": True, "current": 0, "total": 0,
             "message": "Starting...", "last_result": None,
@@ -205,6 +208,7 @@ async def start_index(incremental: bool = True):
                 chroma_collection=_chroma_col,
                 progress_cb=_progress,
                 incremental=incremental,
+                collection=coll,
             )
             _index_state["last_result"] = result
         except Exception as e:
@@ -213,8 +217,22 @@ async def start_index(incremental: bool = True):
         finally:
             _index_state["running"] = False
 
-    Thread(target=_run, args=(incremental,), daemon=True).start()
+    Thread(target=_run, args=(incremental, coll), daemon=True).start()
     return {"status": "started"}
+
+
+@app.delete("/api/index")
+async def delete_index():
+    global _chroma_col
+    if _index_state["running"]:
+        return JSONResponse({"error": "indexing in progress"}, status_code=409)
+    _chroma_client.delete_collection(CHROMA_COLLECTION)
+    _chroma_col = _chroma_client.get_or_create_collection(
+        name=CHROMA_COLLECTION,
+        metadata={"hnsw:space": "cosine"},
+    )
+    log.info("Index cleared.")
+    return {"ok": True}
 
 
 @app.get("/api/index/status")

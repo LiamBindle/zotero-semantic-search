@@ -96,8 +96,11 @@ def _make_id(item_id: int, attach_key: str, chunk_idx: int) -> str:
 
 # ── Main indexing entry point ──────────────────────────────────────────────────
 
-def _resolvable_items(db_path: str, storage_dir: str) -> list[tuple]:
-    """Return [(item_id, attach_key, attach_path, row), ...] for all attachments that exist on disk."""
+def _resolvable_items(
+    db_path: str, storage_dir: str, collection: str | None = None
+) -> list[tuple]:
+    """Return [(item_id, attach_key, attach_path, row, creators_by_item, coll_by_item), ...]
+    for attachments that exist on disk, optionally filtered to a single collection."""
     conn, tmp_db = _open_db(db_path)
     try:
         items = conn.execute(_ITEMS_SQL).fetchall()
@@ -119,6 +122,8 @@ def _resolvable_items(db_path: str, storage_dir: str) -> list[tuple]:
 
     result = []
     for row in items:
+        if collection and collection not in coll_by_item.get(row["itemID"], []):
+            continue
         attach_path = _resolve_path(row["attach_path"], storage_dir, row["attach_key"])
         if attach_path:
             result.append((row["itemID"], row["attach_key"], attach_path,
@@ -126,9 +131,11 @@ def _resolvable_items(db_path: str, storage_dir: str) -> list[tuple]:
     return result
 
 
-def get_pending_count(db_path: str, storage_dir: str, chroma_collection) -> dict:
+def get_pending_count(
+    db_path: str, storage_dir: str, chroma_collection, collection: str | None = None
+) -> dict:
     """Return {"pending": N, "total": N} — attachments not yet in the index."""
-    candidates = _resolvable_items(db_path, storage_dir)
+    candidates = _resolvable_items(db_path, storage_dir, collection)
     if not candidates:
         return {"pending": 0, "total": 0}
     first_chunk_ids = [_make_id(item_id, attach_key, 0)
@@ -145,8 +152,9 @@ def run_indexing(
     chroma_collection,
     progress_cb=None,
     incremental: bool = True,
+    collection: str | None = None,
 ) -> dict:
-    candidates = _resolvable_items(db_path, storage_dir)
+    candidates = _resolvable_items(db_path, storage_dir, collection)
 
     if incremental and candidates:
         first_chunk_ids = [_make_id(item_id, attach_key, 0)
