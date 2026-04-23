@@ -510,7 +510,7 @@
       <div class="h-divider"></div>
       <span class="h-subtitle">Zotero</span>
     </div>
-    <span class="h-badge">{{ embed_model }}</span>
+    <span id="embed-badge" class="h-badge"></span>
     <span id="ollama-badge" class="h-ollama-badge h-ollama-off">Ollama offline</span>
   </div>
 </header>
@@ -657,6 +657,9 @@
 
   async function checkStatus() {
     const d = await fetch('/api/status').then(r => r.json()).catch(() => null);
+    if (d?.embed_model) {
+      document.getElementById('embed-badge').textContent = d.embed_model;
+    }
     const badge = document.getElementById('ollama-badge');
     if (d?.ollama?.available) {
       _ollamaAvailable = true;

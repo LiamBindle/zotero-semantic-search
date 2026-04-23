@@ -2,11 +2,18 @@
 set -e
 
 # Block all new outbound connections at the kernel level.
-# ESTABLISHED,RELATED allows the container to respond to inbound connections
-# (e.g. port 8000 from the host) and loopback allows Ollama <-> app traffic.
-iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -j DROP
+# Set DISABLE_NETWORK_ISOLATION=1 to skip (e.g. Docker Desktop on macOS/Windows
+# where NET_ADMIN may not be available). Only do this if you accept that egress
+# is then enforced only by the telemetry opt-out env vars, not iptables.
+if [ "${DISABLE_NETWORK_ISOLATION:-0}" = "1" ]; then
+    echo "[security] WARNING: Network isolation disabled via DISABLE_NETWORK_ISOLATION=1."
+    echo "[security] Egress is NOT blocked — relying on telemetry opt-out env vars only."
+else
+    iptables -A OUTPUT -o lo -j ACCEPT
+    iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    iptables -A OUTPUT -j DROP
+    echo "[security] Network egress blocked via iptables."
+fi
 
 echo "Starting Ollama..."
 ollama serve &

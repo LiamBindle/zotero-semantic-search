@@ -4,8 +4,7 @@
 
  [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-![Search demo placeholder](assets/semantic-search.gif)
-<!-- Replace with a GIF of a search query returning results -->
+![Search demo](assets/semantic-search.gif)
 
 Zotero Semantic Search indexes your Zotero library using dense vector embeddings and lets you search by meaning rather than keywords. An optional local LLM synthesises a cited summary from the matching papers — all processing happens on your machine with no data leaving your network.
 
@@ -25,18 +24,16 @@ Zotero Semantic Search indexes your Zotero library using dense vector embeddings
 ## Screenshots
 
 ### Semantic search across your library
-![Search results placeholder](assets/semantic-search.gif)
-<!-- Replace with a screenshot of the results cards -->
+![Search results](assets/semantic-search.gif)
 
 ### AI summary with cited references
-![AI summary placeholder](assets/ai-summary.gif)
-<!-- Replace with a GIF of the summary streaming in -->
+![AI summary](assets/ai-summary.gif)
 
 ---
 
 ## Quick Start
 
-**Requirements:** Docker and Docker Compose. Your Zotero library must be at `~/Zotero` (the default location).
+**Requirements:** Docker and Docker Compose. Your Zotero library must be at `~/Zotero` (the default location). Runs on Linux (x86-64), macOS (Intel and Apple Silicon), and Windows.
 
 ```bash
 git clone https://github.com/your-username/zotero-semantic-search.git
@@ -83,6 +80,17 @@ The following variables are set automatically by the pixi environment activation
 
 All model weights (embedding model and LLM) are downloaded into the Docker image at build time, so the running container has no reason to make any outbound requests.
 
+**Docker Desktop on macOS / Windows**
+
+On Linux hosts the iptables rules are applied at startup and the container will refuse to start if they fail. On Docker Desktop (macOS or Windows), `NET_ADMIN` may not be available depending on your version and settings. If the container fails to start, you can disable the iptables block by setting `DISABLE_NETWORK_ISOLATION=1` in `docker-compose.yml`:
+
+```yaml
+environment:
+  - DISABLE_NETWORK_ISOLATION=1
+```
+
+With this set, egress is not blocked at the kernel level — only the telemetry opt-out env vars apply. Do not use this on a Linux host where you want hard isolation.
+
 **Verifying isolation**
 
 To confirm the egress block is active, you can run a connectivity test from inside the container:
@@ -99,12 +107,12 @@ docker compose exec zotero-search curl -s --max-time 5 https://example.com
 Requires [pixi](https://pixi.sh).
 
 ```bash
-pixi run dev   # starts uvicorn with --reload on http://localhost:8000
+pixi run dev          # live-reload dev server on http://localhost:8000
+pixi run app          # production-like server on http://127.0.0.1:8000
+pixi run delete-index # wipe the local ChromaDB index
 ```
 
-Ensure Ollama is running separately (`ollama serve`) if you want AI features.
-
-Telemetry opt-outs (HuggingFace Hub offline mode, ChromaDB, Ollama analytics) are applied automatically by the pixi environment activation.
+Ensure Ollama is running separately (`ollama serve`) if you want AI features. Telemetry opt-outs are applied automatically by the pixi environment activation.
 
 ---
 

@@ -10,9 +10,8 @@ from threading import Thread
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from fastembed import TextEmbedding
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import ollama as _ollama
@@ -83,14 +82,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-templates = Jinja2Templates(directory="templates")
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"embed_model": EMBED_MODEL})
+@app.get("/")
+async def index():
+    return FileResponse("index.html")
 
 
 # ── Status ─────────────────────────────────────────────────────────────────────
@@ -100,6 +98,7 @@ async def api_status():
     version = await _ollama.get_version(OLLAMA_URL) if _ollama_available else None
     return {
         "ollama": {"available": _ollama_available, "model": OLLAMA_MODEL, "version": version},
+        "embed_model": EMBED_MODEL,
     }
 
 

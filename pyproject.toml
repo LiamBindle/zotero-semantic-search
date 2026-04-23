@@ -1,30 +1,16 @@
-[project]
-authors = [{name = "Liam Bindle", email = "liambindle@gmail.com"}]
-dependencies = []
-name = "local-semantic-search"
-requires-python = ">= 3.11"
-version = "0.1.0"
-
-[build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
-
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "linux-aarch64"]
 
 [tool.pixi.dependencies]
 python = "3.12.*"
 cxx-compiler = "*"        # needed to compile chroma-hnswlib
-# Web framework
 fastapi = ">=0.111"
 uvicorn = ">=0.30"
-jinja2 = ">=3.1"
-# Document extraction — prefer conda so system libs are co-managed
-lxml = ">=5.0"            # HTML / ODT / EPUB (C parser, handles malformed HTML)
-python-docx = ">=1.1"     # DOCX / DOC
-python-pptx = ">=1.0"     # PPTX / PPT
-openpyxl = ">=3.1"        # XLSX
+lxml = ">=5.0"
+python-docx = ">=1.1"
+python-pptx = ">=1.0"
+openpyxl = ">=3.1"
 pillow = ">=10.3,<11"    # pin to satisfy fastembed==0.3.6 (<11 required)
 
 [tool.pixi.pypi-dependencies]
@@ -43,4 +29,13 @@ DO_NOT_TRACK = "1"
 
 [tool.pixi.tasks]
 dev = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-app = "python launcher.py"
+app = "uvicorn main:app --host 127.0.0.1 --port 8000 --log-level info"
+delete-index = """python -c "
+import os, chromadb
+from chromadb.config import Settings
+from pathlib import Path
+p = os.environ.get('CHROMA_PATH', str(Path.home() / '.local/share/zotero-semantic-search/chroma'))
+c = chromadb.PersistentClient(path=p, settings=Settings(anonymized_telemetry=False))
+c.delete_collection('zotero_docs')
+print('Index deleted from', p)
+" """
