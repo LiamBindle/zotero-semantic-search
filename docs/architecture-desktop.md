@@ -4,16 +4,17 @@
 
 ```
 Electron (main.js)
+  ├── bridge HTTP server           → localhost:<random port> (file-open handler)
   ├── generates docker-compose.yml → app.getPath('userData')
   ├── docker compose up            → container on localhost:8000
-  └── WebContentsView              → loads http://localhost:8000 inside the window
+  └── WebContentsView              → loads http://localhost:8000/?__electron=1&__bridge=<port>
 ```
 
 ## Electron process model
 
 | Process | File | Responsibility |
 |---------|------|----------------|
-| Main | `desktop/src/main.js` | Docker lifecycle, IPC handlers, application menu |
+| Main | `desktop/src/main.js` | Docker lifecycle, bridge server, IPC handlers, application menu |
 | Preload | `desktop/src/preload.js` | Typed `contextBridge` bridge to renderer |
 | Renderer | `desktop/src/renderer/` | Status/log UI; covered by `WebContentsView` once ready |
 
@@ -28,6 +29,19 @@ Electron (main.js)
 | `retryDocker()` | renderer → main | Re-run lifecycle after error |
 | `copyLogs(text)` | renderer → main | Write log text to clipboard |
 | `openBrowser(url)` | renderer → main | `shell.openExternal` for external links |
+
+### Bridge server (open-file)
+
+The web app runs inside Docker and cannot open host files directly. A small HTTP server starts in the main process on a random loopback port before the app loads. The port is passed to the page via `?__bridge=<port>` in the URL.
+
+When the user clicks "↗ Open file", `index.html` calls:
+```
+GET http://localhost:<port>/open?path=/zotero/storage/…
+```
+
+The bridge server maps `/zotero/` → `~/Zotero/` (with path-traversal guard) and calls `shell.openPath()`, which opens the file in the OS default application on all platforms.
+
+The "↗ Open file" button is only rendered when `?__electron=1` is present in the URL, so it never appears when the app is accessed directly in a browser.
 
 ### Lifecycle
 

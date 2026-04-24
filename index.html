@@ -630,6 +630,10 @@
 </main>
 
 <script>
+  const _sp        = new URLSearchParams(location.search);
+  const isElectron  = _sp.has('__electron');
+  const bridgePort  = _sp.get('__bridge');
+
   let _ollamaAvailable = false;
   let _lastPrompt = '';
   let _resultMap = new Map();  // 'result-N' → result object
@@ -968,14 +972,14 @@
       <div class="loc-badge">${esc(loc)}</div>
       <div class="fragment">${esc(r.text)}</div>
       <div class="card-foot">
-        ${r.attach_path ? `<button class="open-btn" onclick="openFile(${JSON.stringify(r.attach_path)})">↗ Open file</button>` : ''}
+        ${r.attach_path && isElectron ? `<button class="open-btn" data-path="${esc(r.attach_path)}" onclick="openFile(this.dataset.path)">↗ Open file</button>` : ''}
         ${colls.length ? `<div class="tags">${colls.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>` : ''}
       </div>`;
     return card;
   }
 
-  async function openFile(path) {
-    await fetch('/api/open?' + new URLSearchParams({ path }));
+  function openFile(filePath) {
+    fetch(`http://localhost:${bridgePort}/open?path=${encodeURIComponent(filePath)}`);
   }
 
   function esc(s) {

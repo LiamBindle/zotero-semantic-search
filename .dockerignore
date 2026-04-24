@@ -1,3 +1,7 @@
 .pixi
 __pycache__
 *.pyc
+desktop/
+docs/
+.github/
+.claude/

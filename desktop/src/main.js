@@ -32,6 +32,8 @@ let isShuttingDown = false;
 let appView        = null;
 let appViewShowing = false;
 let logsMenuItem   = null;
+let bridgeServer   = null;
+let bridgePort     = null;
 
 const APP_URL       = 'http://localhost:8000';
 const POLL_INTERVAL = 2000;
@@ -245,7 +247,8 @@ function launchApp() {
   updateAppViewBounds();
   // Re-sync bounds after the WM has processed the resize request
   setTimeout(updateAppViewBounds, 200);
-  appView.webContents.loadURL(APP_URL);
+
+  appView.webContents.loadURL(`${APP_URL}/?__electron=1&__bridge=${bridgePort}`);
   appViewShowing = true;
 
   if (logsMenuItem) {
@@ -405,8 +408,39 @@ ipcMain.handle('copy-logs', (_event, text) => {
   clipboard.writeText(text);
 });
 
+// ── Bridge server (open-file for the WebContentsView) ─────────────────────────
+// A tiny HTTP server on a spare loopback port. The page fetches it directly —
+// no IPC, no preload, no custom scheme. Port is passed via ?__bridge=N in URL.
+function startBridgeServer() {
+  return new Promise((resolve) => {
+    const zoteroBase = path.join(os.homedir(), 'Zotero');
+    bridgeServer = http.createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const filePath = new URL(req.url, 'http://127.0.0.1').searchParams.get('path') || '';
+      if (filePath.startsWith('/zotero/')) {
+        const hostPath = path.resolve(
+          path.join(zoteroBase, filePath.slice('/zotero/'.length))
+        );
+        if (hostPath.startsWith(zoteroBase + path.sep)) {
+          shell.openPath(hostPath).then(err => {
+            if (err) sendLog(`Warning: could not open file: ${err}`);
+          });
+        }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    bridgeServer.on('error', err => sendLog(`Bridge server error: ${err.message}`));
+    bridgeServer.listen(0, '127.0.0.1', () => {
+      bridgePort = bridgeServer.address().port;
+      resolve();
+    });
+  });
+}
+
 // ── App events ────────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await startBridgeServer();
   setupMenu();
   composePath = generateComposeFile();
   createWindow();
@@ -416,8 +450,6 @@ app.whenReady().then(() => {
       sendStatus('error-start-failed', 'Failed to start', err.message);
     });
   });
-
-
 });
 
 app.on('before-quit', (event) => {
@@ -431,6 +463,7 @@ app.on('before-quit', (event) => {
   });
   if (r.stdout) sendLog(r.stdout.trim());
   if (r.stderr) sendLog(r.stderr.trim());
+  if (bridgeServer) bridgeServer.close();
   app.quit();
 });
 
