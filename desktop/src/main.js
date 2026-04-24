@@ -145,11 +145,17 @@ function runCompose(args) {
     const proc = spawn('docker', ['compose', '-f', composePath, ...args], {
       env: dockerEnv(),
     });
-    proc.stdout.on('data', d => sendLog(d.toString()));
-    proc.stderr.on('data', d => sendLog(d.toString()));
+    let combinedOutput = '';
+    const handle = d => { const s = d.toString(); combinedOutput += s; sendLog(s); };
+    proc.stdout.on('data', handle);
+    proc.stderr.on('data', handle);
     proc.on('close', code => {
-      if (code === 0) resolve();
-      else reject(new Error(`exited with code ${code}`));
+      if (code === 0) { resolve(); return; }
+      if (combinedOutput.includes('manifest unknown')) {
+        reject(new Error('Image not found in registry (manifest unknown). The image may still be building — try again in a few minutes.'));
+      } else {
+        reject(new Error(`exited with code ${code}`));
+      }
     });
   });
 }
