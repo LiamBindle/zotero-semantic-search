@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, clipboard, Menu, WebContentsView } = require('electron');
 const { spawnSync, spawn } = require('child_process');
 const path  = require('path');
 const fs    = require('fs');
@@ -29,6 +29,9 @@ function dockerEnv() {
 let mainWindow     = null;
 let composePath    = null;
 let isShuttingDown = false;
+let appView        = null;
+let appViewShowing = false;
+let logsMenuItem   = null;
 
 const APP_URL       = 'http://localhost:8000';
 const IMAGE_NAME    = 'ghcr.io/liambindle/zotero-semantic-search:latest';
@@ -198,6 +201,38 @@ function sendStatus(state, message, detail) {
   }
 }
 
+// ── App view (WebContentsView for the running service) ────────────────────────
+function updateAppViewBounds() {
+  if (!appView || !mainWindow || mainWindow.isDestroyed()) return;
+  const [w, h] = mainWindow.getContentSize();
+  appView.setBounds({ x: 0, y: 0, width: w, height: h });
+}
+
+function launchApp() {
+  mainWindow.setSize(1280, 860);
+  mainWindow.center();
+
+  if (appView) {
+    mainWindow.contentView.removeChildView(appView);
+    appView = null;
+  }
+
+  appView = new WebContentsView();
+  mainWindow.contentView.addChildView(appView);
+  updateAppViewBounds();
+  // Re-sync bounds after the WM has processed the resize request
+  setTimeout(updateAppViewBounds, 200);
+  appView.webContents.loadURL(APP_URL);
+  appViewShowing = true;
+
+  if (logsMenuItem) {
+    logsMenuItem.enabled = true;
+    logsMenuItem.checked = false;
+  }
+
+  sendStatus('ready', 'Ready');
+}
+
 // ── Main lifecycle ────────────────────────────────────────────────────────────
 async function runLifecycle() {
   sendLog(`Platform: ${process.platform}  arch: ${process.arch}`);
@@ -257,7 +292,46 @@ async function runLifecycle() {
   sendLog(`Polling ${APP_URL}...`);
   await pollUntilReady();
 
-  sendStatus('ready', 'Ready');
+  launchApp();
+}
+
+// ── Application menu ──────────────────────────────────────────────────────────
+function setupMenu() {
+  const template = [];
+
+  if (process.platform === 'darwin') {
+    template.push({
+      label: app.getName(),
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    });
+  }
+
+  template.push({
+    label: 'View',
+    submenu: [
+      {
+        id: 'toggle-logs',
+        label: 'Show Logs',
+        type: 'checkbox',
+        checked: false,
+        enabled: false,
+        accelerator: 'CmdOrCtrl+L',
+        click(item) {
+          // item.checked is already toggled; true = show logs, false = show app
+          appViewShowing = !item.checked;
+          if (appView) appView.setVisible(appViewShowing);
+        },
+      },
+    ],
+  });
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  logsMenuItem = menu.getMenuItemById('toggle-logs');
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -278,16 +352,20 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('resize', updateAppViewBounds);
 }
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
 ipcMain.handle('open-browser', (_event, url) => {
-  mainWindow.setSize(1280, 860);
-  mainWindow.center();
-  mainWindow.loadURL(url || APP_URL);
+  if (url) shell.openExternal(url);
 });
 
 ipcMain.handle('retry-docker', () => {
+  if (appView) appView.setVisible(false);
+  if (logsMenuItem) {
+    logsMenuItem.enabled = false;
+    logsMenuItem.checked = false;
+  }
   runLifecycle().catch(err => {
     sendLog(`Fatal: ${err.message}`);
     sendStatus('error-start-failed', 'Failed to start', err.message);
@@ -300,6 +378,7 @@ ipcMain.handle('copy-logs', (_event, text) => {
 
 // ── App events ────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  setupMenu();
   composePath = generateComposeFile();
   createWindow();
   mainWindow.webContents.once('did-finish-load', () => {
