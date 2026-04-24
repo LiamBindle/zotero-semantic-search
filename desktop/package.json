@@ -1,7 +1,7 @@
 {
   "name": "zotero-semantic-search",
   "productName": "Zotero Semantic Search",
-  "version": "2026.1.0",
+  "version": "0.0.0",
   "description": "Local semantic search for your Zotero library",
   "main": "src/main.js",
   "scripts": {
