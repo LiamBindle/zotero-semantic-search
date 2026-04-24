@@ -1,32 +1,42 @@
 # Zotero Semantic Search
 
-**Find papers by meaning, not keywords. AI summaries. Fully offline.**
+**Search your research library by meaning, not keywords — completely private, completely offline.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](#installation)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/LiamBindle/zotero-semantic-search/pkgs/container/zotero-semantic-search)
-[![Docker image](https://github.com/LiamBindle/zotero-semantic-search/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LiamBindle/zotero-semantic-search/actions/workflows/docker-publish.yml)
+[![Build](https://github.com/LiamBindle/zotero-semantic-search/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LiamBindle/zotero-semantic-search/actions/workflows/docker-publish.yml)
 
 ![Search demo](assets/semantic-search.gif)
 
-Zotero's built-in search only matches exact keywords. Zotero Semantic Search lets you describe what you're looking for in plain language — a concept, a finding, a relationship — and surfaces the most relevant papers from your library by meaning. An optional local LLM then synthesises a cited summary of the results. Everything runs locally in Docker; your documents never leave your machine.
+Zotero's built-in search only finds exact keyword matches. Zotero Semantic Search lets you describe what you're looking for in plain language — a concept, a method, a finding — and surfaces the most relevant papers by meaning. An optional AI assistant can then write a cited summary of the results.
+
+**Everything runs on your own computer.** No account. No internet connection required after setup. Your documents never leave your machine.
+
+---
+
+## Why does local matter?
+
+Most AI-powered search tools work by sending your documents to a server in the cloud. That's fine for public research, but many Zotero libraries contain things that shouldn't leave your computer: unpublished manuscripts, confidential client work, sensitive research data, or proprietary literature.
+
+Zotero Semantic Search runs the AI entirely on your own machine. The app has no way to phone home — network access from the search container is blocked at the system level. You get the benefits of AI search without any of the privacy trade-offs.
 
 ---
 
 ## Features
 
-- **Search by meaning** — ask a question or describe a concept in plain English; results are ranked by semantic similarity, not keyword overlap
-- **AI summaries** — generate a cited synthesis of the matching papers after a search; each claim links back to its source card
-- **Fully private** — all models run locally; network egress is blocked at the kernel level inside the container so no data can leave, even accidentally
-- **No Zotero plugin required** — reads directly from your existing Zotero SQLite database and attachment files; no sync, no account, no disruption to your workflow
-- **Incremental indexing** — only new files are embedded on each search; PDFs, DOCX, PPTX, XLSX, HTML, and RTF are all supported
+- **Search by meaning** — describe what you're looking for in plain English; results are ranked by relevance, not keyword overlap
+- **AI summaries** — after a search, generate a cited synthesis of the matching papers; each claim links back to its source
+- **Completely private** — all AI models run locally; outbound network traffic from the container is blocked so data cannot leave, even accidentally
+- **No Zotero plugin** — reads directly from your existing Zotero library; nothing to install in Zotero, no sync, no account
 - **Collection filtering** — search your whole library or narrow to a specific Zotero collection
+- **Broad file support** — indexes PDFs, Word documents, PowerPoint, Excel, HTML, and RTF attachments
 
 ---
 
 ## Screenshots
 
-### Semantic search across your library
+### Search by meaning
 ![Search results](assets/semantic-search.gif)
 
 ### AI summary with cited references
@@ -36,109 +46,76 @@ Zotero's built-in search only matches exact keywords. Zotero Semantic Search let
 
 ## Installation
 
-The only dependency is Docker. Supported platforms: **Linux** (x86-64), **macOS** (Intel and Apple Silicon), **Windows**.
+### What you need
 
-### Step 1 — Install Docker
+- **Docker Desktop** — the app will detect if it's missing and show you a download link
+- A Zotero library in its default location (`~/Zotero`)
+
+### Step 1 — Download the app
+
+Go to the [**latest release**](https://github.com/LiamBindle/zotero-semantic-search/releases/latest) and download the installer for your platform:
+
+| Platform | File to download |
+|---|---|
+| macOS | `.dmg` |
+| Windows | `.exe` |
+| Linux | `.AppImage` |
+
+Install it like any other application.
+
+### Step 2 — Install Docker Desktop
+
+If you don't already have Docker Desktop installed, download it for your platform:
 
 | Platform | Download |
 |---|---|
 | macOS | [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/) |
-| Windows | [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) (requires WSL2 — the installer sets this up automatically) |
-| Linux | [Docker Engine](https://docs.docker.com/engine/install/) + [Docker Compose plugin](https://docs.docker.com/compose/install/) |
+| Windows | [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) |
+| Linux | [Docker Engine](https://docs.docker.com/engine/install/) + [Compose plugin](https://docs.docker.com/compose/install/) |
 
-### Step 2 — Create a `docker-compose.yml`
+### Step 3 — Open the app
 
-Create a folder anywhere on your computer and save the following as `docker-compose.yml` inside it:
+Launch Zotero Semantic Search. On first run it will download the AI models (~5–6 GB) and start automatically. This one-time download can take a few minutes depending on your connection.
 
-```yaml
-services:
-  zotero-search:
-    image: ghcr.io/LiamBindle/zotero-semantic-search:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - ~/Zotero:/zotero:ro
-      - chroma-data:/data/chroma
-    cap_add:
-      - NET_ADMIN
-    restart: unless-stopped
+Once the startup screen clears, you're ready to search.
 
-volumes:
-  chroma-data:
-```
-
-This assumes Zotero is installed in its default location (`~/Zotero` on macOS/Linux; `%USERPROFILE%\Zotero` on Windows — Docker resolves `~` correctly on all platforms).
-
-> **macOS:** If the container fails to start, Docker Desktop may not support the `NET_ADMIN` capability on your version. Add `environment: [DISABLE_NETWORK_ISOLATION=1]` to the service as a workaround — see [Privacy & Network Isolation](#privacy--network-isolation) for what this trades away.
-
-### Step 3 — Run it
-
-```bash
-docker compose up
-```
-
-The first run downloads the prebuilt image (~5–6 GB, includes all model weights). Once started, open **http://localhost:8000**.
-
-The first search on a collection indexes any unindexed attachments — this can take a few minutes depending on library size. Subsequent searches are fast.
-
-### Building from source
-
-To build with different models, or to make code changes:
-
-```bash
-git clone https://github.com/LiamBindle/zotero-semantic-search.git
-cd zotero-semantic-search
-docker compose build   # ~10 min first time
-docker compose up
-```
+> **First search:** indexing your library takes a few minutes the first time. Subsequent searches are fast.
 
 ---
 
-## Privacy & Network Isolation
+## Privacy & network isolation
 
-Zotero libraries often contain unpublished work and sensitive documents. This tool is designed so that no data can leave your machine, through two independent layers:
+The container applies iptables rules on startup that block all outbound connections at the kernel level. Only loopback traffic (between the app and the local AI models) is permitted. No library or process running inside the container can bypass this.
 
-**1. Kernel-level egress block** — the container applies iptables rules on startup that DROP all new outbound connections. Only loopback traffic (app ↔ Ollama) and responses to inbound connections (port 8000) are permitted. This is enforced at the Linux kernel level inside the container's network namespace — no library or process can bypass it.
+In addition, telemetry is disabled in every component (ChromaDB, fastembed, HuggingFace Hub, Ollama) via environment variables. All model weights are baked into the Docker image at build time, so the container has no need to make any network request once running.
 
-**2. Telemetry opt-outs** — environment variables disable analytics in every component (ChromaDB, fastembed, HuggingFace Hub, Ollama). These apply inside Docker and during local development.
-
-All model weights are baked into the Docker image at build time, so the running container has no reason to make any outbound request.
-
-To verify isolation is active:
+To verify isolation yourself:
 
 ```bash
 docker compose exec zotero-search curl -s --max-time 5 https://example.com
-# Expected: connection timed out — not a response
+# Expected: connection timed out
 ```
 
-**Disabling isolation** — set `DISABLE_NETWORK_ISOLATION=1` in your `docker-compose.yml` environment if `NET_ADMIN` is unavailable (some Docker Desktop configurations on macOS). With this set, egress is not blocked at the kernel level; only the telemetry opt-outs apply.
+> **macOS / Windows:** Docker Desktop does not support the `NET_ADMIN` capability required for kernel-level egress blocking. The container automatically falls back to telemetry-only opt-outs on these platforms. Your documents still never leave your machine — there is no code that sends them anywhere — but the network-level hard block is a Linux-only feature.
 
 ---
 
 ## Configuration
 
-Set these in the `environment` section of your `docker-compose.yml` to override defaults:
+For most users no configuration is needed. The following environment variables can be set in the generated `docker-compose.yml` (found in the app's data directory) to override defaults:
 
 | Variable | Default | Description |
 |---|---|---|
 | `ZOTERO_DB` | `/zotero/zotero.sqlite` | Path to your Zotero SQLite database |
 | `ZOTERO_STORAGE` | `/zotero/storage` | Path to your Zotero attachment storage |
-| `CHROMA_PATH` | `/data/chroma` | Where ChromaDB persists the vector index |
+| `CHROMA_PATH` | `/data/chroma` | Where the vector index is stored |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `llama3.2` | LLM used for query expansion and summaries |
+| `OLLAMA_MODEL` | `llama3.2` | Model used for AI summaries |
 | `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | Embedding model |
-
-To build with different models baked into the image:
-
-```bash
-docker compose build \
-  --build-arg OLLAMA_MODEL=llama3.1:8b \
-  --build-arg EMBED_MODEL=nomic-ai/nomic-embed-text-v1.5
-```
 
 ---
 
-## How It Works
+## How it works
 
 ```
 Query
@@ -152,23 +129,30 @@ Query
                                                     Ollama (summary) ──► streamed response
 ```
 
-1. **Indexing** — attachments are extracted and split into ~2000-character chunks, embedded with [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) (768-dim, 8192-token context), and stored in a ChromaDB cosine-similarity index
-2. **Search** — the query is embedded (or a LLM-generated hypothetical document is embedded instead, via [HyDE](https://arxiv.org/abs/2212.10496)) and the nearest chunks are retrieved; results are deduplicated to one card per paper
-3. **Summary** — visible result cards are sent to Ollama with a citation prompt; tokens stream back to the browser via Server-Sent Events
+1. **Indexing** — attachments are extracted and split into ~2000-character chunks, embedded with [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5), and stored in a ChromaDB cosine-similarity index
+2. **Search** — the query is embedded (or a LLM-generated hypothetical document is used instead, via [HyDE](https://arxiv.org/abs/2212.10496)) and the nearest chunks are retrieved; results are deduplicated to one card per paper
+3. **Summary** — visible result cards are sent to a local Ollama instance with a citation prompt; the response streams back to the browser
 
 ---
 
-## Local Development
+## Local development
 
-Requires [pixi](https://pixi.sh).
+Requires [pixi](https://pixi.sh) (Linux only).
 
 ```bash
-pixi run dev          # live-reload dev server on http://localhost:8000
-pixi run app          # production server on http://127.0.0.1:8000
-pixi run delete-index # wipe the local ChromaDB index
+pixi run dev          # live-reload dev server on http://localhost:8765
+pixi run desktop      # Electron app (standard Linux / macOS)
+pixi run nix-desktop  # Electron app on NixOS
 ```
 
-Run `ollama serve` separately if you want AI features. Telemetry opt-outs are applied automatically by the pixi environment.
+Run `ollama serve` separately if you want AI features during development.
+
+### Releasing
+
+```
+/release        # vYEAR.N.0
+/release patch  # vYEAR.N.Z
+```
 
 ---
 

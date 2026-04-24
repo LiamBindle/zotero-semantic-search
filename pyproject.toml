@@ -29,8 +29,8 @@ OLLAMA_NO_ANALYTICS = "1"
 DO_NOT_TRACK = "1"
 
 [tool.pixi.tasks]
-dev = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-app = "uvicorn main:app --host 127.0.0.1 --port 8000 --log-level info"
+dev = "uvicorn main:app --host 0.0.0.0 --port 8765 --reload"
+app = "uvicorn main:app --host 127.0.0.1 --port 8765 --log-level info"
 desktop           = "cd desktop && npm install && npm start"
 nix-desktop       = "cd desktop && npm install && nix shell nixpkgs#electron_39 -c electron ."
 build-desktop-mac   = "cd desktop && npm install && npm run dist:mac"

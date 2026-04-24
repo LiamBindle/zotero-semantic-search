@@ -22,6 +22,10 @@ GET /api/search?q=
 
 **Supported formats:** PDF (pymupdf), DOCX, PPTX, XLSX, RTF, HTML/XML
 
+## Collections (`/api/collections`)
+
+Collections are read directly from the Zotero SQLite database (`SELECT DISTINCT collectionName FROM collections`), not from the ChromaDB index. This means the dropdown always reflects the live state of the user's Zotero library, including collections that have never been indexed.
+
 ## Search pipeline (`/api/search`)
 
 1. Embed the query with fastembed
@@ -44,9 +48,9 @@ Detected at startup via `GET /api/tags`. When absent, standard embedding search 
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ZOTERO_DB` | `~/Zotero/zotero.sqlite` | Zotero database path |
-| `ZOTERO_STORAGE` | `~/Zotero/storage` | Attachment files root |
-| `CHROMA_PATH` | `~/.local/share/…/chroma` | Vector store (host) / `/data/chroma` (container) |
+| `ZOTERO_DB` | `/zotero/zotero.sqlite` | Zotero database path (container); `~/Zotero/zotero.sqlite` (host dev) |
+| `ZOTERO_STORAGE` | `/zotero/storage` | Attachment files root (container); `~/Zotero/storage` (host dev) |
+| `CHROMA_PATH` | `/data/chroma` | Vector store (container); `~/.local/share/zotero-semantic-search/chroma` (host dev) |
 | `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | fastembed model identifier |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `llama3.2` | LLM for HyDE, expansion, summary |

@@ -7,10 +7,11 @@ Local semantic search for Zotero libraries. FastAPI + ChromaDB service in Docker
 Uses [pixi](https://pixi.sh) (Linux only — pixi has no macOS/Windows platform entries in this repo).
 
 ```bash
-pixi run dev          # FastAPI dev server on :8000 with hot-reload
-pixi run app          # FastAPI production server on :8000
+pixi run dev          # FastAPI dev server on :8765 with hot-reload
+pixi run app          # FastAPI production server on :8765
 pixi run desktop      # Electron app (standard Linux / macOS)
 pixi run nix-desktop  # Electron app on NixOS (uses nix shell for Electron binary)
+pixi run delete-index # wipe the local ChromaDB index
 ```
 
 Electron requires Docker to be running. In dev mode it builds the image from source.
