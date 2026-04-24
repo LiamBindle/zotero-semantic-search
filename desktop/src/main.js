@@ -166,7 +166,7 @@ async function waitForDaemon(timeoutMs) {
 }
 
 // ── Compose runner ────────────────────────────────────────────────────────────
-function runCompose(args, { silent = false } = {}) {
+function runCompose(args) {
   return new Promise((resolve, reject) => {
     logCmd(`docker compose ${args.join(' ')}`);
     const proc = spawn('docker', ['compose', '-f', composePath, ...args], {
@@ -176,7 +176,7 @@ function runCompose(args, { silent = false } = {}) {
     const handle = d => {
       const s = d.toString();
       combinedOutput += s;
-      if (!silent) sendLog(s);
+      sendLog(s);
     };
     proc.stdout.on('data', handle);
     proc.stderr.on('data', handle);
@@ -185,7 +185,6 @@ function runCompose(args, { silent = false } = {}) {
       if (combinedOutput.includes('manifest unknown')) {
         reject(new Error('Image not found in registry (manifest unknown). The image may still be building — try again in a few minutes.'));
       } else {
-        if (silent) sendLog(combinedOutput);
         reject(new Error(`exited with code ${code}`));
       }
     });
@@ -317,7 +316,7 @@ async function runLifecycle() {
     await runCompose(['up', '-d']);
   }
 
-  // 6. Wait for HTTP
+  // Wait for HTTP
   sendStatus('starting', 'Waiting for service...', 'This may take 30–60 seconds');
   sendLog(`Polling ${APP_URL}...`);
   await pollUntilReady();
@@ -418,9 +417,7 @@ app.whenReady().then(() => {
     });
   });
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+
 });
 
 app.on('before-quit', (event) => {
