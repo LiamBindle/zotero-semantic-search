@@ -186,17 +186,33 @@ function generateComposeFile() {
 function checkDockerInstalled() {
   logCmd('docker --version');
   const r = spawnSync('docker', ['--version'], { env: dockerEnv(), timeout: 5000, encoding: 'utf8' });
+  if (r.error) {
+    if (r.error.code === 'ENOENT') {
+      sendLog('Error: Docker not found. Install Docker Desktop and make sure it is in your PATH.');
+      sendLog(`Searched PATH: ${dockerEnv().PATH}`);
+    } else {
+      sendLog(`Error: ${r.error.message}`);
+    }
+    return false;
+  }
   if (r.stdout) sendLog(r.stdout.trim());
   if (r.stderr) sendLog(r.stderr.trim());
-  if (r.error)  sendLog(`Error: ${r.error.message}`);
+  if (r.status !== 0) sendLog(`Error: docker --version exited with code ${r.status}`);
   return r.status === 0;
 }
 
 function checkDockerComposeInstalled() {
   logCmd('docker compose version');
   const r = spawnSync('docker', ['compose', 'version'], { env: dockerEnv(), timeout: 5000, encoding: 'utf8' });
+  if (r.error) {
+    sendLog(`Error: ${r.error.message}`);
+    return false;
+  }
   if (r.stdout) sendLog(r.stdout.trim());
   if (r.stderr) sendLog(r.stderr.trim());
+  if (r.status !== 0) {
+    sendLog('Error: Docker Compose plugin not available. Update Docker Desktop to a version that bundles Compose.');
+  }
   return r.status === 0;
 }
 
@@ -328,16 +344,20 @@ async function runLifecycle() {
 
   sendStatus('checking-docker', 'Checking Docker installation...');
   if (!checkDockerInstalled()) {
+    sendLog('✗ Docker check failed. See above for details.');
     sendStatus('error-no-docker', 'Docker is not installed',
-      'Install Docker Desktop to continue.');
+      'Install Docker Desktop and click Retry.');
     return;
   }
+  sendLog('✓ Docker found.');
 
   if (!checkDockerComposeInstalled()) {
+    sendLog('✗ Docker Compose check failed. See above for details.');
     sendStatus('error-no-compose', 'Docker Compose is not available',
-      'Update Docker Desktop to a version that includes Compose.');
+      'Update Docker Desktop and click Retry.');
     return;
   }
+  sendLog('✓ Docker Compose found.');
 
   sendStatus('checking-docker', 'Connecting to Docker daemon...');
   logCmd('docker info');
