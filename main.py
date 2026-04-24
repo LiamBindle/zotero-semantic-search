@@ -173,7 +173,7 @@ async def api_expand(q: str = ""):
 
 @app.get("/api/collections")
 async def api_collections():
-    return {"collections": get_collections(_chroma_col)}
+    return {"collections": get_collections(ZOTERO_DB)}
 
 
 # ── Indexing ───────────────────────────────────────────────────────────────────

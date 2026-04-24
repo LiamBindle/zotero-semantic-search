@@ -237,24 +237,20 @@ def get_item_ids_for_collection(db_path: str, collection: str) -> list[str]:
 
 # ── Collection list helper ─────────────────────────────────────────────────────
 
-def get_collections(chroma_collection) -> list[str]:
+def get_collections(db_path: str) -> list[str]:
     try:
-        count = chroma_collection.count()
-        if count == 0:
-            return []
-        seen: set[str] = set()
-        offset = 0
-        while offset < count:
-            result = chroma_collection.get(
-                limit=1000, offset=offset, include=["metadatas"]
-            )
-            for meta in result["metadatas"]:
-                for name in meta.get("collection_names", "").split(";"):
-                    name = name.strip()
-                    if name:
-                        seen.add(name)
-            offset += 1000
-        return sorted(seen)
+        conn, tmp = _open_db(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT collectionName FROM collections ORDER BY collectionName"
+            ).fetchall()
+            return [r[0] for r in rows]
+        finally:
+            conn.close()
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     except Exception as e:
         log.warning("get_collections failed: %s", e)
         return []
