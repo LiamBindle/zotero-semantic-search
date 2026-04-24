@@ -1,0 +1,37 @@
+appId: io.github.liambindle.zotero-semantic-search
+productName: Zotero Semantic Search
+
+directories:
+  output: dist
+
+files:
+  - src/**/*
+  - package.json
+
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+  category: public.app-category.productivity
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Science
+
+publish:
+  provider: github
+  owner: LiamBindle
+  repo: zotero-semantic-search
