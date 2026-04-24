@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, clipboard, Menu, WebContentsView } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, clipboard, Menu, WebContentsView, dialog } = require('electron');
 const { spawnSync, spawn } = require('child_process');
 const path  = require('path');
 const fs    = require('fs');
@@ -8,7 +8,6 @@ const os    = require('os');
 const http  = require('http');
 
 // ── Docker PATH fix (macOS) ──────────────────────────────────────────────────
-// Docker Desktop on macOS installs docker to locations not on the GUI app PATH.
 const EXTRA_PATH = [
   '/usr/local/bin',
   '/usr/bin',
@@ -26,21 +25,27 @@ function dockerEnv() {
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
-let mainWindow     = null;
-let composePath    = null;
-let isShuttingDown = false;
-let appView        = null;
-let appViewShowing = false;
-let logsMenuItem   = null;
-let bridgeServer   = null;
-let bridgePort     = null;
+let mainWindow        = null;
+let logsWindow        = null;
+let monitorWindow     = null;
+let composePath       = null;
+let isShuttingDown    = false;
+let appView           = null;
+let bridgeServer      = null;
+let bridgePort        = null;
+let statsProc         = null;
+let statsTimer        = null;
+let prevCpuSample     = null;
+let dockerRestartItem = null;
+let dockerResetItem   = null;
+
+const logBuffer  = [];   // rolling buffer replayed to newly-opened log windows
+let   lastStatus = null; // replayed to newly-opened log windows
 
 const APP_URL       = 'http://localhost:8765';
 const POLL_INTERVAL = 2000;
 const POLL_TIMEOUT  = 3 * 60 * 1000;
 
-// In a packaged build, pin to the vX.Y image matching the app's minor version.
-// In dev (electron . from source), use a locally-built image instead.
 const IS_DEV = !app.isPackaged;
 
 function getImageRef() {
@@ -50,22 +55,91 @@ function getImageRef() {
 }
 
 // ── Logging ──────────────────────────────────────────────────────────────────
-// Strip ANSI escape codes (docker pull emits colour/cursor sequences)
 function stripAnsi(str) {
   return str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 }
 
 function sendLog(text) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  // Docker pull uses \r to overwrite progress lines; keep only the last segment
   const clean = stripAnsi(text.toString())
     .split('\r').pop()
     .replace(/\n+$/, '');
-  if (clean) mainWindow.webContents.send('log', clean);
+  if (!clean) return;
+  logBuffer.push(clean);
+  if (logBuffer.length > 800) logBuffer.shift();
+  broadcastToRenderers('log', clean);
 }
 
 function logCmd(label) {
   sendLog(`\n$ ${label}`);
+}
+
+// ── Broadcast to all renderer windows ────────────────────────────────────────
+function broadcastToRenderers(channel, data) {
+  for (const win of [mainWindow, logsWindow, monitorWindow]) {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, data);
+  }
+}
+
+// ── Status helper ─────────────────────────────────────────────────────────────
+function sendStatus(state, message, detail) {
+  lastStatus = { state, message, detail };
+  broadcastToRenderers('status', { state, message, detail });
+  if (state.startsWith('error')) openLogsWindow();
+}
+
+// ── Logs / Monitor windows ────────────────────────────────────────────────────
+function openLogsWindow() {
+  if (logsWindow && !logsWindow.isDestroyed()) {
+    logsWindow.focus();
+    return;
+  }
+  logsWindow = new BrowserWindow({
+    width: 560,
+    height: 420,
+    minWidth: 400,
+    minHeight: 300,
+    title: 'Logs — Zotero Semantic Search',
+    backgroundColor: '#f3f4f6',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  logsWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), {
+    query: { panel: 'logs' },
+  });
+  logsWindow.webContents.once('did-finish-load', () => {
+    logBuffer.forEach(line => logsWindow.webContents.send('log', line));
+    if (lastStatus) logsWindow.webContents.send('status', lastStatus);
+  });
+  logsWindow.on('closed', () => { logsWindow = null; });
+}
+
+function openMonitorWindow() {
+  if (monitorWindow && !monitorWindow.isDestroyed()) {
+    monitorWindow.focus();
+    return;
+  }
+  monitorWindow = new BrowserWindow({
+    width: 380,
+    height: 500,
+    minWidth: 300,
+    minHeight: 300,
+    title: 'Monitor — Zotero Semantic Search',
+    backgroundColor: '#f3f4f6',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  monitorWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), {
+    query: { panel: 'monitor' },
+  });
+  // Start polling; if container isn't up yet docker stats finds no match
+  startStatsStream();
+  monitorWindow.on('closed', () => { monitorWindow = null; stopStatsStream(); });
 }
 
 // ── docker-compose.yml generation ────────────────────────────────────────────
@@ -73,8 +147,6 @@ function generateComposeFile() {
   const zoteroPath = path.join(os.homedir(), 'Zotero').replace(/\\/g, '/');
   const imageRef   = getImageRef();
 
-  // Dev: point compose at the local Dockerfile so the image is always built
-  // from source. Release: pull the pinned vX.Y image from GHCR.
   const serviceHeader = IS_DEV
     ? [
         '  zotero-search:',
@@ -151,7 +223,6 @@ function tryStartDockerDesktop() {
       spawn('cmd', ['/c', 'start', '', 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'],
         { env: dockerEnv(), detached: true, shell: true });
     }
-    // Linux: Docker daemon is a system service — user must start it manually
   } catch (e) {
     sendLog(`Could not auto-start Docker Desktop: ${e.message}`);
   }
@@ -219,13 +290,6 @@ function pollUntilReady() {
   });
 }
 
-// ── Status helper ─────────────────────────────────────────────────────────────
-function sendStatus(state, message, detail) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('status', { state, message, detail });
-  }
-}
-
 // ── App view (WebContentsView for the running service) ────────────────────────
 function updateAppViewBounds() {
   if (!appView || !mainWindow || mainWindow.isDestroyed()) return;
@@ -245,16 +309,14 @@ function launchApp() {
   appView = new WebContentsView();
   mainWindow.contentView.addChildView(appView);
   updateAppViewBounds();
-  // Re-sync bounds after the WM has processed the resize request
   setTimeout(updateAppViewBounds, 200);
 
   appView.webContents.loadURL(`${APP_URL}/?__electron=1&__bridge=${bridgePort}`);
-  appViewShowing = true;
 
-  if (logsMenuItem) {
-    logsMenuItem.enabled = true;
-    logsMenuItem.checked = false;
-  }
+  setDockerMenuEnabled(true);
+
+  // Resume stats polling if the monitor window is already open
+  if (monitorWindow && !monitorWindow.isDestroyed()) startStatsStream();
 
   sendStatus('ready', 'Ready');
 }
@@ -264,7 +326,6 @@ async function runLifecycle() {
   sendLog(`Platform: ${process.platform}  arch: ${process.arch}`);
   sendLog(`PATH: ${dockerEnv().PATH}`);
 
-  // 1. Docker binary
   sendStatus('checking-docker', 'Checking Docker installation...');
   if (!checkDockerInstalled()) {
     sendStatus('error-no-docker', 'Docker is not installed',
@@ -272,14 +333,12 @@ async function runLifecycle() {
     return;
   }
 
-  // 2. Docker Compose subcommand
   if (!checkDockerComposeInstalled()) {
     sendStatus('error-no-compose', 'Docker Compose is not available',
       'Update Docker Desktop to a version that includes Compose.');
     return;
   }
 
-  // 3. Docker daemon
   sendStatus('checking-docker', 'Connecting to Docker daemon...');
   logCmd('docker info');
   if (!isDaemonRunning()) {
@@ -297,12 +356,9 @@ async function runLifecycle() {
   sendLog('Docker daemon is running.');
 
   if (IS_DEV) {
-    // Dev: build from source every time; Docker layer cache keeps this fast
-    // when nothing has changed.
     sendStatus('starting', 'Building container from source...');
     await runCompose(['up', '--build', '-d']);
   } else {
-    // Release: pull latest patch for the pinned vX.Y image, then start.
     const imageExists = isImagePresent();
     sendStatus('pulling',
       imageExists ? 'Checking for updates...' : 'Downloading image (~5–6 GB)...',
@@ -319,12 +375,107 @@ async function runLifecycle() {
     await runCompose(['up', '-d']);
   }
 
-  // Wait for HTTP
   sendStatus('starting', 'Waiting for service...', 'This may take 30–60 seconds');
   sendLog(`Polling ${APP_URL}...`);
   await pollUntilReady();
 
   launchApp();
+}
+
+// ── Stats (polls --no-stream every 2 s; avoids streaming \r issues) ───────────
+function getCpuPercents() {
+  const cpus = os.cpus();
+  if (!prevCpuSample) { prevCpuSample = cpus; return null; }
+  const result = cpus.map((cpu, i) => {
+    const prev  = prevCpuSample[i];
+    const delta = k => cpu.times[k] - prev.times[k];
+    const total = delta('user') + delta('nice') + delta('sys') + delta('idle') + delta('irq');
+    return total > 0 ? Math.round((total - delta('idle')) / total * 100) : 0;
+  });
+  prevCpuSample = cpus;
+  return result;
+}
+
+function startStatsStream() {
+  if (statsTimer) return;
+  prevCpuSample = null;
+
+  const tick = () => {
+    if (statsProc) return; // previous snapshot still in flight
+    statsProc = spawn('docker', ['stats', '--no-stream', '--format', '{{json .}}'], {
+      env: dockerEnv(),
+    });
+    let out = '';
+    statsProc.stdout.on('data', d => { out += d.toString(); });
+    statsProc.on('close', () => {
+      statsProc = null;
+      if (!statsTimer) return; // stopped while snapshot was running
+      for (const line of out.trim().split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const d = JSON.parse(line);
+          const name = d.Name || d.Container || '';
+          if (!name.includes('zotero-search')) continue;
+          broadcastToRenderers('stats', {
+            cpu: d.CPUPerc, mem: d.MemUsage,
+            cpus: getCpuPercents(),
+          });
+        } catch {}
+      }
+    });
+  };
+
+  tick();
+  statsTimer = setInterval(tick, 2000);
+}
+
+function stopStatsStream() {
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+  if (statsProc)  { statsProc.kill(); statsProc = null; }
+}
+
+// ── Docker menu actions ───────────────────────────────────────────────────────
+function setDockerMenuEnabled(on) {
+  if (dockerRestartItem) dockerRestartItem.enabled = on;
+  if (dockerResetItem)   dockerResetItem.enabled   = on;
+}
+
+function hideViewPanels() {
+  if (appView) appView.setVisible(false);
+}
+
+async function restartContainer() {
+  setDockerMenuEnabled(false);
+  stopStatsStream();
+  hideViewPanels();
+  sendStatus('starting', 'Restarting container...');
+  await runCompose(['restart']);
+  sendStatus('starting', 'Waiting for service...');
+  await pollUntilReady();
+  launchApp();
+}
+
+async function resetData() {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Cancel', 'Reset'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Reset search index',
+    message: 'Delete the search index?',
+    detail: 'This permanently deletes all indexed vectors. Your Zotero library files are not affected, but you will need to re-index from scratch.',
+  });
+  if (response === 0) return;
+
+  setDockerMenuEnabled(false);
+  stopStatsStream();
+  hideViewPanels();
+  sendStatus('stopping', 'Removing container and data...');
+  await runCompose(['down', '-v']);
+  runLifecycle().catch(err => {
+    sendLog(`Fatal: ${err.message}`);
+    sendStatus('error-start-failed', 'Failed to start', err.message);
+  });
 }
 
 // ── Application menu ──────────────────────────────────────────────────────────
@@ -343,27 +494,54 @@ function setupMenu() {
   }
 
   template.push({
+    label: 'Docker',
+    submenu: [
+      {
+        id: 'docker-restart',
+        label: 'Restart Container',
+        enabled: false,
+        click() {
+          restartContainer().catch(err => {
+            sendLog(`Fatal: ${err.message}`);
+            sendStatus('error-start-failed', 'Restart failed', err.message);
+          });
+        },
+      },
+      { type: 'separator' },
+      {
+        id: 'docker-reset',
+        label: 'Reset Data…',
+        enabled: false,
+        click() {
+          resetData().catch(err => {
+            sendLog(`Fatal: ${err.message}`);
+            sendStatus('error-start-failed', 'Reset failed', err.message);
+          });
+        },
+      },
+    ],
+  });
+
+  template.push({
     label: 'View',
     submenu: [
       {
-        id: 'toggle-logs',
         label: 'Show Logs',
-        type: 'checkbox',
-        checked: false,
-        enabled: false,
         accelerator: 'CmdOrCtrl+L',
-        click(item) {
-          // item.checked is already toggled; true = show logs, false = show app
-          appViewShowing = !item.checked;
-          if (appView) appView.setVisible(appViewShowing);
-        },
+        click() { openLogsWindow(); },
+      },
+      {
+        label: 'Show Monitor',
+        accelerator: 'CmdOrCtrl+M',
+        click() { openMonitorWindow(); },
       },
     ],
   });
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
-  logsMenuItem = menu.getMenuItemById('toggle-logs');
+  dockerRestartItem = menu.getMenuItemById('docker-restart');
+  dockerResetItem   = menu.getMenuItemById('docker-reset');
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -376,6 +554,7 @@ function createWindow() {
     resizable: true,
     fullscreenable: false,
     title: 'Zotero Semantic Search',
+    backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -383,8 +562,11 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.on('resize', updateAppViewBounds);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (!isShuttingDown) app.quit();
+  });
 }
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
@@ -393,11 +575,9 @@ ipcMain.handle('open-browser', (_event, url) => {
 });
 
 ipcMain.handle('retry-docker', () => {
-  if (appView) appView.setVisible(false);
-  if (logsMenuItem) {
-    logsMenuItem.enabled = false;
-    logsMenuItem.checked = false;
-  }
+  stopStatsStream();
+  hideViewPanels();
+  setDockerMenuEnabled(false);
   runLifecycle().catch(err => {
     sendLog(`Fatal: ${err.message}`);
     sendStatus('error-start-failed', 'Failed to start', err.message);
@@ -409,8 +589,6 @@ ipcMain.handle('copy-logs', (_event, text) => {
 });
 
 // ── Bridge server (open-file for the WebContentsView) ─────────────────────────
-// A tiny HTTP server on a spare loopback port. The page fetches it directly —
-// no IPC, no preload, no custom scheme. Port is passed via ?__bridge=N in URL.
 function startBridgeServer() {
   return new Promise((resolve) => {
     const zoteroBase = path.join(os.homedir(), 'Zotero');
@@ -464,6 +642,7 @@ app.on('before-quit', (event) => {
   if (r.stdout) sendLog(r.stdout.trim());
   if (r.stderr) sendLog(r.stderr.trim());
   if (bridgeServer) bridgeServer.close();
+  stopStatsStream();
   app.quit();
 });
 
