@@ -1,0 +1,17 @@
+{
+  "name": "zotero-semantic-search",
+  "productName": "Zotero Semantic Search",
+  "version": "1.0.0",
+  "description": "Local semantic search for your Zotero library",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}
