@@ -35,7 +35,7 @@ let logsMenuItem   = null;
 let bridgeServer   = null;
 let bridgePort     = null;
 
-const APP_URL       = 'http://localhost:8000';
+const APP_URL       = 'http://localhost:8765';
 const POLL_INTERVAL = 2000;
 const POLL_TIMEOUT  = 3 * 60 * 1000;
 
@@ -91,7 +91,7 @@ function generateComposeFile() {
     'services:',
     ...serviceHeader,
     '    ports:',
-    '      - "8000:8000"',
+    '      - "8765:8765"',
     '    volumes:',
     `      - "${zoteroPath}:/zotero:ro"`,
     '      - chroma-data:/data/chroma',

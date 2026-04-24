@@ -34,6 +34,7 @@ MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / 
 CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-semantic-search" / "chroma"))
 OLLAMA_URL     = os.environ.get("OLLAMA_URL",            "http://localhost:11434")
 OLLAMA_MODEL   = os.environ.get("OLLAMA_MODEL",          "llama3.2")
+APP_VERSION    = os.environ.get("APP_VERSION",            "dev")
 
 # ── Global singletons ──────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ async def api_status():
     return {
         "ollama": {"available": _ollama_available, "model": OLLAMA_MODEL, "version": version},
         "embed_model": EMBED_MODEL,
+        "app_version": APP_VERSION,
     }
 
 

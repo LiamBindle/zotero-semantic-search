@@ -49,12 +49,15 @@ print('Embedding model ready.')"
 # App code (copied last — changes here don't invalidate any layer above)
 COPY . .
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 ENV ZOTERO_DB=/zotero/zotero.sqlite
 ENV ZOTERO_STORAGE=/zotero/storage
 ENV CHROMA_PATH=/data/chroma
 ENV OLLAMA_URL=http://localhost:11434
 
-EXPOSE 8000
+EXPOSE 8765
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
