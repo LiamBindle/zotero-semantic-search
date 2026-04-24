@@ -34,9 +34,18 @@ let appViewShowing = false;
 let logsMenuItem   = null;
 
 const APP_URL       = 'http://localhost:8000';
-const IMAGE_NAME    = 'ghcr.io/liambindle/zotero-semantic-search:latest';
 const POLL_INTERVAL = 2000;
 const POLL_TIMEOUT  = 3 * 60 * 1000;
+
+// In a packaged build, pin to the vX.Y image matching the app's minor version.
+// In dev (electron . from source), use a locally-built image instead.
+const IS_DEV = !app.isPackaged;
+
+function getImageRef() {
+  if (IS_DEV) return 'zotero-semantic-search-dev:latest';
+  const [maj, min] = app.getVersion().split('.');
+  return `ghcr.io/liambindle/zotero-semantic-search:v${maj}.${min}`;
+}
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 // Strip ANSI escape codes (docker pull emits colour/cursor sequences)
@@ -60,10 +69,25 @@ function logCmd(label) {
 // ── docker-compose.yml generation ────────────────────────────────────────────
 function generateComposeFile() {
   const zoteroPath = path.join(os.homedir(), 'Zotero').replace(/\\/g, '/');
+  const imageRef   = getImageRef();
+
+  // Dev: point compose at the local Dockerfile so the image is always built
+  // from source. Release: pull the pinned vX.Y image from GHCR.
+  const serviceHeader = IS_DEV
+    ? [
+        '  zotero-search:',
+        `    build:`,
+        `      context: "${path.join(__dirname, '..', '..').replace(/\\/g, '/')}"`,
+        `    image: ${imageRef}`,
+      ]
+    : [
+        '  zotero-search:',
+        `    image: ${imageRef}`,
+      ];
+
   const content = [
     'services:',
-    '  zotero-search:',
-    `    image: ${IMAGE_NAME}`,
+    ...serviceHeader,
     '    ports:',
     '      - "8000:8000"',
     '    volumes:',
@@ -110,7 +134,7 @@ function isDaemonRunning() {
 }
 
 function isImagePresent() {
-  const r = spawnSync('docker', ['image', 'inspect', IMAGE_NAME], {
+  const r = spawnSync('docker', ['image', 'inspect', getImageRef()], {
     env: dockerEnv(), timeout: 10000, encoding: 'utf8',
   });
   return r.status === 0;
@@ -270,22 +294,28 @@ async function runLifecycle() {
   }
   sendLog('Docker daemon is running.');
 
-  // 4. Pull
-  const imageExists = isImagePresent();
-  sendStatus('pulling',
-    imageExists ? 'Checking for updates...' : 'Downloading image (~5–6 GB)...',
-    imageExists ? '' : 'This will take a few minutes on first run');
-  try {
-    await runCompose(['pull']);
-  } catch (err) {
-    if (!imageExists) throw new Error(`Image download failed: ${err.message}`);
-    sendLog(`Warning: pull failed (${err.message}) — continuing with existing image.`);
-    await new Promise(r => setTimeout(r, 1500));
-  }
+  if (IS_DEV) {
+    // Dev: build from source every time; Docker layer cache keeps this fast
+    // when nothing has changed.
+    sendStatus('starting', 'Building container from source...');
+    await runCompose(['up', '--build', '-d']);
+  } else {
+    // Release: pull latest patch for the pinned vX.Y image, then start.
+    const imageExists = isImagePresent();
+    sendStatus('pulling',
+      imageExists ? 'Checking for updates...' : 'Downloading image (~5–6 GB)...',
+      imageExists ? '' : 'This will take a few minutes on first run');
+    try {
+      await runCompose(['pull']);
+    } catch (err) {
+      if (!imageExists) throw new Error(`Image download failed: ${err.message}`);
+      sendLog(`Warning: pull failed (${err.message}) — continuing with existing image.`);
+      await new Promise(r => setTimeout(r, 1500));
+    }
 
-  // 5. Up
-  sendStatus('starting', 'Starting container...');
-  await runCompose(['up', '-d']);
+    sendStatus('starting', 'Starting container...');
+    await runCompose(['up', '-d']);
+  }
 
   // 6. Wait for HTTP
   sendStatus('starting', 'Waiting for service...', 'This may take 30–60 seconds');
