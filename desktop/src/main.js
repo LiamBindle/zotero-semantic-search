@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
 const { spawnSync, spawn } = require('child_process');
 const path  = require('path');
 const fs    = require('fs');
@@ -138,15 +138,19 @@ async function waitForDaemon(timeoutMs) {
   return false;
 }
 
-// ── Compose runner (streams output to log) ────────────────────────────────────
-function runCompose(args) {
+// ── Compose runner ────────────────────────────────────────────────────────────
+function runCompose(args, { silent = false } = {}) {
   return new Promise((resolve, reject) => {
     logCmd(`docker compose ${args.join(' ')}`);
     const proc = spawn('docker', ['compose', '-f', composePath, ...args], {
       env: dockerEnv(),
     });
     let combinedOutput = '';
-    const handle = d => { const s = d.toString(); combinedOutput += s; sendLog(s); };
+    const handle = d => {
+      const s = d.toString();
+      combinedOutput += s;
+      if (!silent) sendLog(s);
+    };
     proc.stdout.on('data', handle);
     proc.stderr.on('data', handle);
     proc.on('close', code => {
@@ -154,6 +158,7 @@ function runCompose(args) {
       if (combinedOutput.includes('manifest unknown')) {
         reject(new Error('Image not found in registry (manifest unknown). The image may still be building — try again in a few minutes.'));
       } else {
+        if (silent) sendLog(combinedOutput);
         reject(new Error(`exited with code ${code}`));
       }
     });
@@ -277,7 +282,9 @@ function createWindow() {
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
 ipcMain.handle('open-browser', (_event, url) => {
-  shell.openExternal(url || APP_URL);
+  mainWindow.setSize(1280, 860);
+  mainWindow.center();
+  mainWindow.loadURL(url || APP_URL);
 });
 
 ipcMain.handle('retry-docker', () => {
