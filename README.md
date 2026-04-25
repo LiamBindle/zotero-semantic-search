@@ -150,15 +150,15 @@ Query
                                                     Ollama (summary) ──► streamed response
 ```
 
-1. **Indexing** — attachments are extracted and split into ~2000-character chunks, embedded with [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5), and stored in a ChromaDB cosine-similarity index. After each run, an [indexing report](#indexing-report) records exactly which files were indexed, skipped, or failed.
+1. **Indexing** — attachments are extracted and split into ~2000-character chunks, embedded with [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5), and stored in a ChromaDB cosine-similarity index. After each run, an [index summary](#index-summary) records exactly which files were indexed, skipped, or failed.
 2. **Search** — the query is embedded (or a LLM-generated hypothetical document is used instead, via [HyDE](https://arxiv.org/abs/2212.10496)) and the nearest chunks are retrieved; results are deduplicated to one card per paper
 3. **Summary** — visible result cards are sent to a local Ollama instance with a citation prompt; the response streams back to the browser
 
-### Indexing report
+### Index summary
 
 Because trusting that a privacy-sensitive corpus was actually indexed
 matters more than trusting a progress bar, every run produces a
-structured report covering each attachment:
+structured summary covering each attachment:
 
 - `indexed` — text was extracted and vectors were stored
 - `skipped_unsupported` — file extension not in the supported list
@@ -166,10 +166,11 @@ structured report covering each attachment:
 - `extraction_failed` — extractor raised an error (with the message)
 - `no_attachment_on_disk` — Zotero has the metadata but the file is missing
 
-The report is written to `<chroma-parent>/indexing-report.json` and is
-also reachable via `GET /api/index/report`. The frontend surfaces it as
-a "View indexing report" link after each run, so you can verify
-completeness without grepping logs.
+The summary is written to `<chroma-parent>/index-summary.json` and is
+also reachable via `GET /api/index/summary`. The frontend surfaces it
+through the "N / M indexed" counter — clicking it opens a citation-style
+list of every item, so you can verify completeness without grepping
+logs.
 
 ---
 

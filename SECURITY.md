@@ -69,10 +69,26 @@ docker compose exec zotero-private-search iptables -L OUTPUT -n -v
 
 ```bash
 docker compose logs zotero-private-search | grep '\[security\]'
-# Expected on Linux: "[security] Network egress blocked via iptables."
-# Expected on Docker Desktop: "[security] WARNING: Network isolation
-# disabled via DISABLE_NETWORK_ISOLATION=1."
+# Expected on Linux:
+#   [security] Network egress blocked via iptables.
+#   [security] Egress probe blocked — airgap verified.
+# Expected on Docker Desktop:
+#   [security] WARNING: Network isolation disabled via DISABLE_NETWORK_ISOLATION=1.
 ```
+
+The second line is an active TCP probe to `1.1.1.1:443` performed by
+the entrypoint *after* applying the iptables rules. If the rules are
+in effect, the SYN is dropped and the probe times out (good). If you
+ever see `WARNING: egress probe to 1.1.1.1 succeeded — airgap is NOT
+in effect.`, the rules did not take effect and you should not trust
+the airgap claim.
+
+The same probe runs in-process on startup and is exposed at
+`GET /api/airgap`, which the UI surfaces as a header badge. A green
+"Airgap: blocked" badge means the probe verified the block; an amber
+"Airgap: fallback" badge means you opted out of kernel isolation; a
+red "Airgap: BREACH" badge means the probe got through and you should
+investigate immediately.
 
 ### 4. Audit the source
 

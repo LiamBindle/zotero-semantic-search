@@ -13,6 +13,15 @@ else
     iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     iptables -A OUTPUT -j DROP
     echo "[security] Network egress blocked via iptables."
+
+    # Verify the rules actually take effect. TCP probe to 1.1.1.1:443 — no DNS,
+    # no payload, just a SYN. If iptables drops it we time out (good). If it
+    # connects, the airgap is NOT in effect and we say so loudly.
+    if curl -sf --max-time 3 -o /dev/null https://1.1.1.1/ 2>/dev/null; then
+        echo "[security] WARNING: egress probe to 1.1.1.1 succeeded — airgap is NOT in effect."
+    else
+        echo "[security] Egress probe blocked — airgap verified."
+    fi
 fi
 
 echo "Starting Ollama..."

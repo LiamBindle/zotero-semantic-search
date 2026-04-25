@@ -118,6 +118,32 @@
     .h-ollama-off { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
     .h-ollama-off::before { background: var(--border-md); }
 
+    .h-airgap-badge {
+      font-size: 0.67rem;
+      padding: 0.2rem 0.5rem 0.2rem 0.42rem;
+      border-radius: var(--r-sm);
+      border: 1px solid;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      white-space: nowrap;
+      font-family: ui-monospace, monospace;
+    }
+    .h-airgap-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .h-airgap-blocked  { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .h-airgap-blocked::before  { background: #22c55e; }
+    .h-airgap-fallback { background: var(--amber-bg); color: var(--amber-text); border-color: #fcd34d; }
+    .h-airgap-fallback::before { background: #f59e0b; }
+    .h-airgap-breach   { background: #fef2f2; color: #991b1b; border-color: #fca5a5; font-weight: 600; }
+    .h-airgap-breach::before   { background: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.18); }
+    .h-airgap-unknown  { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
+    .h-airgap-unknown::before  { background: var(--border-md); }
+
     /* ── Layout ──────────────────────────────────────────────────────── */
     main {
       max-width: 800px;
@@ -487,6 +513,24 @@
     .index-status-dot.full  { background: #22c55e; }
     .index-status-dot.part  { background: #f59e0b; }
     .ctrl-break { flex-basis: 100%; height: 0; }
+    #index-counter-btn {
+      font-size: 0.74rem;
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 0.1rem 0.4rem;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+      font-variant-numeric: tabular-nums;
+    }
+    #index-counter-btn:hover:not(:disabled) {
+      border-color: var(--accent-border);
+      color: var(--accent);
+      background: var(--accent-bg);
+    }
+    #index-counter-btn:disabled { cursor: default; }
     .index-action-btn {
       font-size: 0.72rem;
       background: none;
@@ -502,21 +546,8 @@
     #index-clear-btn:hover { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
     #index-now-btn:hover  { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
 
-    #index-report-btn {
-      font-size: 0.72rem;
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 0.15rem 0.5rem;
-      border-radius: var(--r-sm);
-      cursor: pointer;
-      transition: all .15s;
-      font-family: inherit;
-    }
-    #index-report-btn:hover { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
-
-    /* ── Report modal ─────────────────────────────────────────────── */
-    #report-overlay {
+    /* ── Index summary modal ───────────────────────────────────────── */
+    #summary-overlay {
       position: fixed; inset: 0;
       background: rgba(17, 24, 39, .55);
       display: none;
@@ -524,8 +555,8 @@
       z-index: 100;
       padding: 2rem;
     }
-    #report-overlay.on { display: flex; }
-    #report-modal {
+    #summary-overlay.on { display: flex; }
+    #summary-modal {
       background: var(--surface);
       border-radius: var(--r-lg);
       box-shadow: var(--shadow-md);
@@ -536,52 +567,65 @@
       flex-direction: column;
       overflow: hidden;
     }
-    #report-modal header {
+    #summary-modal header {
       position: static;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       padding: 1rem 1.25rem;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 0.75rem;
       box-shadow: none;
     }
-    #report-title { font-size: 0.95rem; font-weight: 600; flex: 1; }
-    #report-close {
+    #summary-title { font-size: 0.95rem; font-weight: 600; flex: 1; }
+    #summary-close {
       background: none; border: 1px solid var(--border);
       color: var(--text-muted); padding: 0.2rem 0.55rem;
       border-radius: var(--r-sm); cursor: pointer; font-family: inherit;
       font-size: 0.78rem;
     }
-    #report-close:hover { border-color: var(--border-md); color: var(--text); }
-    #report-body { padding: 1rem 1.25rem; overflow: auto; }
-    .report-summary {
+    #summary-close:hover { border-color: var(--border-md); color: var(--text); }
+    #summary-search {
+      flex-basis: 100%;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.82rem;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      color: var(--text);
+      background: var(--surface-2);
+      outline: none;
+    }
+    #summary-search:focus { border-color: var(--accent-border); background: var(--surface); }
+    #summary-body { padding: 1rem 1.25rem; overflow: auto; }
+    .summary-stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
       gap: 0.5rem;
       margin-bottom: 1rem;
     }
-    .report-stat {
+    .summary-stat {
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: var(--r-sm);
       padding: 0.5rem 0.7rem;
     }
-    .report-stat-num { font-size: 1.1rem; font-weight: 600; color: var(--text); }
-    .report-stat-lbl { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .report-meta {
+    .summary-stat-num { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+    .summary-stat-lbl { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .summary-meta {
       font-size: 0.78rem;
       color: var(--text-muted);
       margin-bottom: 0.75rem;
     }
-    .report-tabs {
+    .summary-tabs {
       display: flex;
       gap: 0.25rem;
       border-bottom: 1px solid var(--border);
       margin-bottom: 0.75rem;
       flex-wrap: wrap;
     }
-    .report-tab {
+    .summary-tab {
       background: none; border: none;
       padding: 0.45rem 0.7rem;
       font-size: 0.78rem;
@@ -591,38 +635,54 @@
       border-bottom: 2px solid transparent;
       margin-bottom: -1px;
     }
-    .report-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
-    .report-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
+    .summary-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .summary-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
     }
-    .report-table th, .report-table td {
-      text-align: left;
-      padding: 0.4rem 0.6rem;
+    .summary-row {
+      display: grid;
+      grid-template-columns: 8px 1fr;
+      gap: 0.6rem;
+      padding: 0.55rem 0.4rem;
       border-bottom: 1px solid var(--border);
-      vertical-align: top;
+      align-items: start;
     }
-    .report-table th {
-      font-weight: 600;
-      color: var(--text-md);
-      background: var(--surface-2);
-      position: sticky; top: 0;
+    .summary-row:last-child { border-bottom: none; }
+    .summary-pill {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-top: 0.45rem;
+      background: var(--border-md);
+      flex-shrink: 0;
     }
-    .report-table td.report-error {
-      color: #b91c1c;
-      font-family: ui-monospace, monospace;
-      font-size: 0.72rem;
+    .summary-pill.indexed              { background: #22c55e; }
+    .summary-pill.skipped_unsupported  { background: #94a3b8; }
+    .summary-pill.skipped_empty        { background: #f59e0b; }
+    .summary-pill.extraction_failed    { background: #dc2626; }
+    .summary-pill.no_attachment_on_disk { background: #dc2626; }
+    .summary-cite {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .summary-cite-authors { color: var(--text-md); }
+    .summary-cite-year    { color: var(--text-muted); margin-left: 0.2rem; }
+    .summary-cite-title   { margin-left: 0.35rem; }
+    .summary-sub {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+      line-height: 1.45;
       word-break: break-word;
     }
-    .report-table td.report-path {
-      color: var(--text-muted);
-      font-family: ui-monospace, monospace;
-      font-size: 0.72rem;
-      word-break: break-all;
-      max-width: 280px;
-    }
-    .report-empty {
+    .summary-sub.error { color: #b91c1c; font-family: ui-monospace, monospace; font-size: 0.72rem; }
+    .summary-empty {
       color: var(--text-muted);
       font-size: 0.85rem;
       padding: 1rem;
@@ -648,6 +708,7 @@
     <span id="version-badge" class="h-badge" style="display:none"></span>
     <span id="embed-badge" class="h-badge"></span>
     <span id="ollama-badge" class="h-ollama-badge h-ollama-off">Ollama offline</span>
+    <span id="airgap-badge" class="h-airgap-badge h-airgap-unknown" title="Network egress status">Airgap: checking…</span>
   </div>
 </header>
 
@@ -701,10 +762,11 @@
       </select>
       <div id="index-status">
         <div class="index-status-dot" id="index-dot"></div>
-        <span id="index-status-text"></span>
+        <button id="index-counter-btn" disabled
+                title="Run indexing to generate a summary"
+                onclick="showIndexSummary()"></button>
         <button class="index-action-btn" id="index-now-btn" onclick="indexNow()">↺ Index</button>
         <button class="index-action-btn" id="index-clear-btn" onclick="clearCollectionIndex()">Clear</button>
-        <button id="index-report-btn" style="display:none" onclick="showIndexReport()">View indexing report</button>
       </div>
       <div class="ctrl-break"></div>
       <span class="coll-label">Results:</span>
@@ -770,13 +832,16 @@
 
 </main>
 
-<div id="report-overlay" onclick="if(event.target===this) closeIndexReport()">
-  <div id="report-modal">
+<div id="summary-overlay" onclick="if(event.target===this) closeIndexSummary()">
+  <div id="summary-modal">
     <header>
-      <span id="report-title">Indexing report</span>
-      <button id="report-close" onclick="closeIndexReport()">Close</button>
+      <span id="summary-title">Index summary</span>
+      <button id="summary-close" onclick="closeIndexSummary()">Close</button>
+      <input id="summary-search" type="search"
+             placeholder="Filter by title or author…"
+             oninput="setSummarySearch(this.value)">
     </header>
-    <div id="report-body"></div>
+    <div id="summary-body"></div>
   </div>
 </div>
 
@@ -794,10 +859,39 @@
   document.addEventListener('DOMContentLoaded', () => {
     loadCollections();
     checkStatus();
+    checkAirgap();
     updateIndexStatus();
     document.getElementById('coll-select').addEventListener('change', updateIndexStatus);
     setInterval(() => { loadCollections(); updateIndexStatus(); }, 30_000);
   });
+
+  async function checkAirgap() {
+    const badge = document.getElementById('airgap-badge');
+    const d = await fetch('/api/airgap').then(r => r.json()).catch(() => null);
+    if (!d) {
+      badge.className = 'h-airgap-badge h-airgap-unknown';
+      badge.textContent = 'Airgap: unknown';
+      badge.title = 'Could not reach /api/airgap';
+      return;
+    }
+    if (d.mode === 'blocked') {
+      badge.className = 'h-airgap-badge h-airgap-blocked';
+      badge.textContent = 'Airgap: blocked';
+      badge.title = d.detail;
+    } else if (d.mode === 'fallback') {
+      badge.className = 'h-airgap-badge h-airgap-fallback';
+      badge.textContent = 'Airgap: fallback';
+      badge.title = d.detail + ' — see SECURITY.md.';
+    } else if (d.mode === 'breach') {
+      badge.className = 'h-airgap-badge h-airgap-breach';
+      badge.textContent = 'Airgap: BREACH';
+      badge.title = d.detail + ' — see SECURITY.md.';
+    } else {
+      badge.className = 'h-airgap-badge h-airgap-unknown';
+      badge.textContent = 'Airgap: ' + (d.mode || 'unknown');
+      badge.title = d.detail || '';
+    }
+  }
 
   async function loadCollections() {
     const d = await fetch('/api/collections').then(r => r.json()).catch(() => null);
@@ -930,23 +1024,35 @@
     const params = coll ? '?' + new URLSearchParams({ collection: coll }) : '';
     const data   = await fetch('/api/index/pending' + params).then(r => r.json()).catch(() => null);
     const el     = document.getElementById('index-status');
-    if (!data || data.total === 0) { el.classList.remove('on'); refreshReportButtonVisibility(); return; }
+    const btn    = document.getElementById('index-counter-btn');
+    if (!data || data.total === 0) {
+      el.classList.remove('on');
+      btn.textContent = '';
+      refreshSummaryButtonAvailability();
+      return;
+    }
     const indexed = data.total - data.pending;
     document.getElementById('index-dot').className =
       data.pending === 0 ? 'index-status-dot full' : indexed === 0 ? 'index-status-dot' : 'index-status-dot part';
-    document.getElementById('index-status-text').textContent = `${indexed} / ${data.total} indexed`;
+    btn.textContent = `${indexed} / ${data.total} indexed`;
     document.getElementById('index-now-btn').style.display   = data.pending > 0 ? '' : 'none';
     document.getElementById('index-clear-btn').style.display = indexed > 0      ? '' : 'none';
     el.classList.add('on');
-    refreshReportButtonVisibility();
+    refreshSummaryButtonAvailability();
   }
 
-  // ── Indexing report ─────────────────────────────────────────────────────────
-  async function refreshReportButtonVisibility() {
-    const btn = document.getElementById('index-report-btn');
+  // ── Index summary ───────────────────────────────────────────────────────────
+  async function refreshSummaryButtonAvailability() {
+    const btn = document.getElementById('index-counter-btn');
     if (!btn) return;
-    const r = await fetch('/api/index/report').catch(() => null);
-    btn.style.display = (r && r.ok) ? '' : 'none';
+    const r = await fetch('/api/index/summary').catch(() => null);
+    if (r && r.ok) {
+      btn.disabled = false;
+      btn.title = 'View index summary';
+    } else {
+      btn.disabled = true;
+      btn.title = 'Run indexing to generate a summary';
+    }
   }
 
   function _escape(s) {
@@ -955,36 +1061,39 @@
     ));
   }
 
-  let _reportItems = [];
-  let _reportFilter = 'problems';
+  let _summaryItems = [];
+  let _summaryFilter = 'problems';
+  let _summarySearch = '';
 
-  async function showIndexReport() {
-    const overlay = document.getElementById('report-overlay');
-    const body    = document.getElementById('report-body');
-    body.innerHTML = '<div class="report-empty">Loading…</div>';
+  async function showIndexSummary() {
+    const overlay = document.getElementById('summary-overlay');
+    const body    = document.getElementById('summary-body');
+    body.innerHTML = '<div class="summary-empty">Loading…</div>';
     overlay.classList.add('on');
-    const r = await fetch('/api/index/report').catch(() => null);
+    document.getElementById('summary-search').value = '';
+    _summarySearch = '';
+    const r = await fetch('/api/index/summary').catch(() => null);
     if (!r || !r.ok) {
-      body.innerHTML = '<div class="report-empty">No report available yet. Run indexing first.</div>';
+      body.innerHTML = '<div class="summary-empty">No summary available yet. Run indexing first.</div>';
       return;
     }
     const data = await r.json();
-    _reportItems = data.items || [];
+    _summaryItems = data.items || [];
     const counts = data.counts || {};
     const problems =
       (counts.skipped_unsupported || 0) +
       (counts.skipped_empty || 0) +
       (counts.extraction_failed || 0) +
       (counts.no_attachment_on_disk || 0);
-    _reportFilter = problems > 0 ? 'problems' : 'all';
+    _summaryFilter = problems > 0 ? 'problems' : 'all';
 
     const finished = data.finished_at ? new Date(data.finished_at).toLocaleString() : '—';
     const scope    = data.collection ? `collection "${_escape(data.collection)}"` : 'whole library';
     const dur      = data.duration_s != null ? ` · ${data.duration_s}s` : '';
 
     body.innerHTML = `
-      <div class="report-meta">Last run: ${_escape(finished)} · ${_escape(scope)}${_escape(dur)}${data.incremental ? ' · incremental' : ''}</div>
-      <div class="report-summary">
+      <div class="summary-meta">Last run: ${_escape(finished)} · ${_escape(scope)}${_escape(dur)}${data.incremental ? ' · incremental' : ''}</div>
+      <div class="summary-stats">
         ${_renderStat(counts.indexed || 0, 'Indexed')}
         ${_renderStat(counts.skipped_unsupported || 0, 'Unsupported')}
         ${_renderStat(counts.skipped_empty || 0, 'No text extracted')}
@@ -992,76 +1101,116 @@
         ${_renderStat(counts.no_attachment_on_disk || 0, 'File missing')}
         ${_renderStat((data.vectors_stored || 0).toLocaleString(), 'Vectors stored')}
       </div>
-      <div class="report-tabs">
-        <button class="report-tab" data-filter="problems" onclick="setReportFilter('problems')">Problems (${problems})</button>
-        <button class="report-tab" data-filter="all" onclick="setReportFilter('all')">All (${_reportItems.length})</button>
-        <button class="report-tab" data-filter="indexed" onclick="setReportFilter('indexed')">Indexed (${counts.indexed || 0})</button>
+      <div class="summary-tabs">
+        <button class="summary-tab" data-filter="problems" onclick="setSummaryFilter('problems')">Problems (${problems})</button>
+        <button class="summary-tab" data-filter="all" onclick="setSummaryFilter('all')">All (${_summaryItems.length})</button>
+        <button class="summary-tab" data-filter="indexed" onclick="setSummaryFilter('indexed')">Indexed (${counts.indexed || 0})</button>
       </div>
-      <div id="report-table-wrap"></div>
+      <div id="summary-list-wrap"></div>
     `;
-    setReportFilter(_reportFilter);
+    _renderSummaryList();
   }
 
   function _renderStat(num, label) {
-    return `<div class="report-stat">
-      <div class="report-stat-num">${_escape(num)}</div>
-      <div class="report-stat-lbl">${_escape(label)}</div>
+    return `<div class="summary-stat">
+      <div class="summary-stat-num">${_escape(num)}</div>
+      <div class="summary-stat-lbl">${_escape(label)}</div>
     </div>`;
   }
 
-  function setReportFilter(filter) {
-    _reportFilter = filter;
-    document.querySelectorAll('.report-tab').forEach(t => {
-      t.classList.toggle('on', t.dataset.filter === filter);
+  function setSummaryFilter(filter) {
+    _summaryFilter = filter;
+    _renderSummaryList();
+  }
+
+  function setSummarySearch(q) {
+    _summarySearch = (q || '').trim().toLowerCase();
+    _renderSummaryList();
+  }
+
+  function _renderSummaryList() {
+    document.querySelectorAll('.summary-tab').forEach(t => {
+      t.classList.toggle('on', t.dataset.filter === _summaryFilter);
     });
-    const wrap  = document.getElementById('report-table-wrap');
-    const rows  = _reportItems.filter(it => {
-      if (filter === 'all') return true;
-      if (filter === 'indexed') return it.status === 'indexed';
+    const wrap = document.getElementById('summary-list-wrap');
+    if (!wrap) return;
+    const matchesFilter = it => {
+      if (_summaryFilter === 'all') return true;
+      if (_summaryFilter === 'indexed') return it.status === 'indexed';
       return it.status !== 'indexed';
-    });
+    };
+    const matchesSearch = it => {
+      if (!_summarySearch) return true;
+      const hay = ((it.title || '') + ' ' + (it.authors || '')).toLowerCase();
+      return hay.includes(_summarySearch);
+    };
+    const rows = _summaryItems.filter(it => matchesFilter(it) && matchesSearch(it));
     if (rows.length === 0) {
-      wrap.innerHTML = '<div class="report-empty">Nothing to show in this view.</div>';
+      const msg = _summarySearch
+        ? `No items match "${_escape(_summarySearch)}".`
+        : 'Nothing to show in this view.';
+      wrap.innerHTML = `<div class="summary-empty">${msg}</div>`;
       return;
     }
-    wrap.innerHTML = `<table class="report-table">
-      <thead><tr>
-        <th>Status</th><th>Title</th><th>Path</th><th>Detail</th>
-      </tr></thead>
-      <tbody>${rows.map(_reportRow).join('')}</tbody>
-    </table>`;
+    wrap.innerHTML = `<ul class="summary-list">${rows.map(_summaryRow).join('')}</ul>`;
   }
 
-  function _reportRow(it) {
-    const detail = it.error
-      ? `<td class="report-error">${_escape(it.error)}</td>`
-      : it.status === 'indexed'
-        ? `<td>${it.chunks} chunks</td>`
-        : `<td>—</td>`;
-    return `<tr>
-      <td>${_escape(_statusLabel(it.status))}</td>
-      <td>${_escape(it.title || 'Untitled')}</td>
-      <td class="report-path">${_escape(it.attach_path || '')}</td>
-      ${detail}
-    </tr>`;
+  // "Last, First; Last, First" → "Smith" / "Smith & Doe" / "Smith et al."
+  function _briefAuthors(authorsStr) {
+    if (!authorsStr) return '';
+    const lasts = authorsStr.split(';')
+      .map(a => a.trim())
+      .filter(Boolean)
+      .map(a => a.split(',')[0].trim())
+      .filter(Boolean);
+    if (lasts.length === 0) return '';
+    if (lasts.length === 1) return lasts[0];
+    if (lasts.length === 2) return `${lasts[0]} & ${lasts[1]}`;
+    return `${lasts[0]} et al.`;
   }
 
-  function _statusLabel(s) {
-    return ({
-      'indexed':                'Indexed',
-      'skipped_unsupported':    'Unsupported',
-      'skipped_empty':          'No text extracted',
-      'extraction_failed':      'Extraction failed',
-      'no_attachment_on_disk':  'File missing',
-    })[s] || s;
+  function _summaryRow(it) {
+    const authors = _briefAuthors(it.authors);
+    const year    = (it.year || '').trim();
+    const title   = it.title || 'Untitled';
+    const fullCite = [authors, year ? `(${year})` : '', title].filter(Boolean).join(' ');
+
+    const citeParts = [];
+    if (authors) citeParts.push(`<span class="summary-cite-authors">${_escape(authors)}</span>`);
+    if (year)    citeParts.push(`<span class="summary-cite-year">(${_escape(year)})</span>`);
+    citeParts.push(`<span class="summary-cite-title">${_escape(title)}</span>`);
+
+    const coll  = (it.collections || '').split(';')[0].trim();
+    let detail;
+    if (it.error) {
+      detail = `<div class="summary-sub error">${coll ? _escape(coll) + ' · ' : ''}${_escape(it.error)}</div>`;
+    } else {
+      const txt = ({
+        'indexed':                `${it.chunks} chunk${it.chunks === 1 ? '' : 's'}`,
+        'skipped_unsupported':    'Unsupported file type',
+        'skipped_empty':          'No extractable text',
+        'extraction_failed':      'Extraction failed',
+        'no_attachment_on_disk':  'Attachment file missing',
+      })[it.status] || it.status;
+      const subParts = [coll, txt].filter(Boolean).join(' · ');
+      detail = `<div class="summary-sub">${_escape(subParts)}</div>`;
+    }
+
+    return `<li class="summary-row">
+      <span class="summary-pill ${_escape(it.status)}"></span>
+      <div>
+        <div class="summary-cite" title="${_escape(fullCite)}">${citeParts.join(' ')}</div>
+        ${detail}
+      </div>
+    </li>`;
   }
 
-  function closeIndexReport() {
-    document.getElementById('report-overlay').classList.remove('on');
+  function closeIndexSummary() {
+    document.getElementById('summary-overlay').classList.remove('on');
   }
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeIndexReport();
+    if (e.key === 'Escape') closeIndexSummary();
   });
 
   async function indexNow() {

@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 CHROMA_COLLECTION = "zotero_docs"
 EMBED_BATCH = 8  # small batches keep peak tensor memory low
-REPORT_FILENAME = "indexing-report.json"
+SUMMARY_FILENAME = "index-summary.json"
 
 # ── SQLite queries ─────────────────────────────────────────────────────────────
 
@@ -176,7 +176,7 @@ def run_indexing(
     progress_cb=None,
     incremental: bool = True,
     collection: str | None = None,
-    report_path: str | None = None,
+    summary_path: str | None = None,
 ) -> dict:
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     started_perf = time.perf_counter()
@@ -193,7 +193,7 @@ def run_indexing(
 
     total = len(candidates)
     vectors_stored = 0
-    items_report: list[dict] = []
+    items_summary: list[dict] = []
     counts = {
         "indexed": 0,
         "skipped_unsupported": 0,
@@ -205,7 +205,7 @@ def run_indexing(
     # Files Zotero references but cannot find on disk are reported even
     # though we never opened them — they would otherwise vanish silently.
     for item_id, attach_key, raw_path, row, creators_by_item, coll_by_item in missing:
-        items_report.append({
+        items_summary.append({
             "item_id": str(item_id),
             "title": row["title"] or "Untitled",
             "authors": "; ".join(creators_by_item.get(item_id, [])),
@@ -243,18 +243,18 @@ def run_indexing(
         if status == "unsupported":
             item_entry["status"] = "skipped_unsupported"
             counts["skipped_unsupported"] += 1
-            items_report.append(item_entry)
+            items_summary.append(item_entry)
             continue
         if status == "empty":
             item_entry["status"] = "skipped_empty"
             counts["skipped_empty"] += 1
-            items_report.append(item_entry)
+            items_summary.append(item_entry)
             log.debug("No chunks extracted from %s", attach_path)
             continue
         if status == "failed":
             item_entry["status"] = "extraction_failed"
             counts["extraction_failed"] += 1
-            items_report.append(item_entry)
+            items_summary.append(item_entry)
             continue
 
         log.info("item %d (%s): %d chunks", item_id, Path(attach_path).name, len(chunks))
@@ -283,7 +283,7 @@ def run_indexing(
 
         item_entry["chunks"] = len(chunks)
         counts["indexed"] += 1
-        items_report.append(item_entry)
+        items_summary.append(item_entry)
 
         del chunks, texts, vectors, ids_buf, embs_buf, metas_buf
         gc.collect()
@@ -294,7 +294,7 @@ def run_indexing(
     finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     duration_s = round(time.perf_counter() - started_perf, 2)
 
-    report = {
+    summary = {
         "status": "done",
         "started_at": started_at,
         "finished_at": finished_at,
@@ -304,18 +304,18 @@ def run_indexing(
         "items_processed": total,
         "vectors_stored": vectors_stored,
         "counts": counts,
-        "items": items_report,
+        "items": items_summary,
     }
 
-    if report_path:
+    if summary_path:
         try:
-            Path(report_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(report_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2)
+            Path(summary_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(summary_path, "w", encoding="utf-8") as f:
+                json.dump(summary, f, indent=2)
         except OSError as e:
-            log.warning("Could not persist indexing report to %s: %s", report_path, e)
+            log.warning("Could not persist index summary to %s: %s", summary_path, e)
 
-    return report
+    return summary
 
 
 # ── Collection index helpers ───────────────────────────────────────────────────

@@ -1,9 +1,9 @@
 import json as _json
 import logging
 import os
-import subprocess
-import sys
+import socket
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
 
@@ -17,7 +17,7 @@ from pydantic import BaseModel
 import ollama as _ollama
 from indexer import (
     CHROMA_COLLECTION,
-    REPORT_FILENAME,
+    SUMMARY_FILENAME,
     get_collections,
     get_item_ids_for_collection,
     get_pending_count,
@@ -39,7 +39,7 @@ ZOTERO_STORAGE = os.environ.get("ZOTERO_STORAGE",       str(_ZOTERO_DEFAULT / "s
 EMBED_MODEL    = os.environ.get("EMBED_MODEL",           "nomic-ai/nomic-embed-text-v1.5")
 MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-private-search" / "models"))
 CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-private-search" / "chroma"))
-REPORT_PATH    = os.environ.get("INDEX_REPORT_PATH",     str(Path(CHROMA_PATH).parent / REPORT_FILENAME))
+SUMMARY_PATH   = os.environ.get("INDEX_SUMMARY_PATH",    str(Path(CHROMA_PATH).parent / SUMMARY_FILENAME))
 OLLAMA_URL     = os.environ.get("OLLAMA_URL",            "http://localhost:11434")
 OLLAMA_MODEL   = os.environ.get("OLLAMA_MODEL",          "llama3.2")
 APP_VERSION    = os.environ.get("APP_VERSION",            "dev")
@@ -50,6 +50,12 @@ _model: TextEmbedding | None = None
 _chroma_client = None
 _chroma_col = None
 _ollama_available: bool = False
+_airgap_state: dict = {
+    "airgapped": None,
+    "mode": "unknown",
+    "detail": "Probe has not run yet.",
+    "probed_at": None,
+}
 
 _index_state: dict = {
     "running": False,
@@ -60,23 +66,55 @@ _index_state: dict = {
 }
 
 
-def _load_persisted_report() -> dict | None:
+def _load_persisted_summary() -> dict | None:
     try:
-        with open(REPORT_PATH, "r", encoding="utf-8") as f:
+        with open(SUMMARY_PATH, "r", encoding="utf-8") as f:
             return _json.load(f)
     except FileNotFoundError:
         return None
     except (OSError, _json.JSONDecodeError) as e:
-        log.warning("Could not load previous indexing report at %s: %s", REPORT_PATH, e)
+        log.warning("Could not load previous index summary at %s: %s", SUMMARY_PATH, e)
         return None
 
 
 def _summarize_result(result: dict | None) -> dict | None:
-    """Strip the per-item list from a report — the polling status endpoint
+    """Strip the per-item list from a summary — the polling status endpoint
     doesn't need to ship every entry on every tick. Counts and totals stay."""
     if not result:
         return result
     return {k: v for k, v in result.items() if k != "items"}
+
+
+def _probe_airgap() -> dict:
+    """TCP-only egress probe to a public IP. No DNS, no HTTP, no payload —
+    just a SYN to 1.1.1.1:443. If iptables is enforcing the egress block, the
+    SYN never gets a response and we time out (mode=blocked). If the probe
+    connects, the airgap is *not* in effect (mode=breach), and we say so
+    loudly. When the user has explicitly opted out via DISABLE_NETWORK_ISOLATION,
+    we don't probe — we report fallback so the UI reflects the chosen tradeoff."""
+    probed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if os.environ.get("DISABLE_NETWORK_ISOLATION", "0") == "1":
+        return {
+            "airgapped": False,
+            "mode": "fallback",
+            "detail": "Network isolation disabled (DISABLE_NETWORK_ISOLATION=1).",
+            "probed_at": probed_at,
+        }
+    try:
+        with socket.create_connection(("1.1.1.1", 443), timeout=3.0):
+            return {
+                "airgapped": False,
+                "mode": "breach",
+                "detail": "TCP probe to 1.1.1.1:443 succeeded — egress is NOT blocked.",
+                "probed_at": probed_at,
+            }
+    except (socket.timeout, OSError) as e:
+        return {
+            "airgapped": True,
+            "mode": "blocked",
+            "detail": f"TCP probe to 1.1.1.1:443 blocked ({type(e).__name__}).",
+            "probed_at": probed_at,
+        }
 
 
 @asynccontextmanager
@@ -106,9 +144,13 @@ async def lifespan(app: FastAPI):
     else:
         log.info("Ollama not detected at %s — standard embedding search only.", OLLAMA_URL)
 
-    # Restore the previous run's report so the "View indexing report" link
+    global _airgap_state
+    _airgap_state = _probe_airgap()
+    log.info("[security] Airgap probe: %s — %s", _airgap_state["mode"], _airgap_state["detail"])
+
+    # Restore the previous run's summary so the "Index summary" link
     # works across restarts, not just within the current process.
-    persisted = _load_persisted_report()
+    persisted = _load_persisted_summary()
     if persisted:
         _index_state["last_result"] = persisted
 
@@ -135,6 +177,14 @@ async def api_status():
         "embed_model": EMBED_MODEL,
         "app_version": APP_VERSION,
     }
+
+
+@app.get("/api/airgap")
+async def api_airgap(recheck: bool = False):
+    global _airgap_state
+    if recheck or _airgap_state.get("probed_at") is None:
+        _airgap_state = _probe_airgap()
+    return _airgap_state
 
 
 # ── Search ─────────────────────────────────────────────────────────────────────
@@ -244,7 +294,7 @@ async def start_index(incremental: bool = True, collection: str = ""):
                 progress_cb=_progress,
                 incremental=incremental,
                 collection=coll,
-                report_path=REPORT_PATH,
+                summary_path=SUMMARY_PATH,
             )
             _index_state["last_result"] = result
         except Exception as e:
@@ -286,35 +336,19 @@ async def index_status():
     return state
 
 
-@app.get("/api/index/report")
-async def index_report():
-    """Return the most recent full indexing report (with the per-item list).
+@app.get("/api/index/summary")
+async def index_summary():
+    """Return the most recent full index summary (with the per-item list).
 
     Falls back to the persisted JSON file if the in-memory state has been
     cleared (e.g. between restarts before any new run completes).
     """
     result = _index_state.get("last_result")
     if not result or "items" not in result:
-        result = _load_persisted_report()
+        result = _load_persisted_summary()
     if not result:
-        return JSONResponse({"error": "no report yet"}, status_code=404)
+        return JSONResponse({"error": "no summary yet"}, status_code=404)
     return result
-
-
-@app.get("/api/open")
-async def open_file(path: str):
-    storage_root = Path(ZOTERO_STORAGE).resolve()
-    try:
-        target = Path(path).resolve()
-    except (OSError, ValueError):
-        return JSONResponse({"error": "invalid path"}, status_code=400)
-    if storage_root not in target.parents and target != storage_root:
-        return JSONResponse({"error": "path outside Zotero storage"}, status_code=400)
-    if not target.exists():
-        return JSONResponse({"error": "file not found"}, status_code=404)
-    cmd = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.Popen([cmd, str(target)])
-    return {"ok": True}
 
 
 # ── AI Summary ─────────────────────────────────────────────────────────────────
