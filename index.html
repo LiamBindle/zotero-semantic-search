@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zotero Semantic Search</title>
+  <title>Zotero Private Search</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -502,6 +502,133 @@
     #index-clear-btn:hover { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
     #index-now-btn:hover  { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
 
+    #index-report-btn {
+      font-size: 0.72rem;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+    }
+    #index-report-btn:hover { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
+
+    /* ── Report modal ─────────────────────────────────────────────── */
+    #report-overlay {
+      position: fixed; inset: 0;
+      background: rgba(17, 24, 39, .55);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 2rem;
+    }
+    #report-overlay.on { display: flex; }
+    #report-modal {
+      background: var(--surface);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-md);
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #report-modal header {
+      position: static;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: none;
+    }
+    #report-title { font-size: 0.95rem; font-weight: 600; flex: 1; }
+    #report-close {
+      background: none; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 0.2rem 0.55rem;
+      border-radius: var(--r-sm); cursor: pointer; font-family: inherit;
+      font-size: 0.78rem;
+    }
+    #report-close:hover { border-color: var(--border-md); color: var(--text); }
+    #report-body { padding: 1rem 1.25rem; overflow: auto; }
+    .report-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .report-stat {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 0.5rem 0.7rem;
+    }
+    .report-stat-num { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+    .report-stat-lbl { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .report-meta {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+    .report-tabs {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .report-tab {
+      background: none; border: none;
+      padding: 0.45rem 0.7rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .report-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .report-table th, .report-table td {
+      text-align: left;
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .report-table th {
+      font-weight: 600;
+      color: var(--text-md);
+      background: var(--surface-2);
+      position: sticky; top: 0;
+    }
+    .report-table td.report-error {
+      color: #b91c1c;
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+      word-break: break-word;
+    }
+    .report-table td.report-path {
+      color: var(--text-muted);
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+      word-break: break-all;
+      max-width: 280px;
+    }
+    .report-empty {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 1rem;
+      text-align: center;
+    }
+
     .empty { color: var(--text-muted); font-size: 0.875rem; padding: 1rem 0; line-height: 1.6; }
   </style>
 </head>
@@ -514,7 +641,7 @@
            stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
       </svg>
-      <span class="h-title">Semantic Search</span>
+      <span class="h-title">Private Search</span>
       <div class="h-divider"></div>
       <span class="h-subtitle">Zotero</span>
     </div>
@@ -577,6 +704,7 @@
         <span id="index-status-text"></span>
         <button class="index-action-btn" id="index-now-btn" onclick="indexNow()">↺ Index</button>
         <button class="index-action-btn" id="index-clear-btn" onclick="clearCollectionIndex()">Clear</button>
+        <button id="index-report-btn" style="display:none" onclick="showIndexReport()">View indexing report</button>
       </div>
       <div class="ctrl-break"></div>
       <span class="coll-label">Results:</span>
@@ -641,6 +769,16 @@
   </div>
 
 </main>
+
+<div id="report-overlay" onclick="if(event.target===this) closeIndexReport()">
+  <div id="report-modal">
+    <header>
+      <span id="report-title">Indexing report</span>
+      <button id="report-close" onclick="closeIndexReport()">Close</button>
+    </header>
+    <div id="report-body"></div>
+  </div>
+</div>
 
 <script>
   const _sp        = new URLSearchParams(location.search);
@@ -792,7 +930,7 @@
     const params = coll ? '?' + new URLSearchParams({ collection: coll }) : '';
     const data   = await fetch('/api/index/pending' + params).then(r => r.json()).catch(() => null);
     const el     = document.getElementById('index-status');
-    if (!data || data.total === 0) { el.classList.remove('on'); return; }
+    if (!data || data.total === 0) { el.classList.remove('on'); refreshReportButtonVisibility(); return; }
     const indexed = data.total - data.pending;
     document.getElementById('index-dot').className =
       data.pending === 0 ? 'index-status-dot full' : indexed === 0 ? 'index-status-dot' : 'index-status-dot part';
@@ -800,7 +938,131 @@
     document.getElementById('index-now-btn').style.display   = data.pending > 0 ? '' : 'none';
     document.getElementById('index-clear-btn').style.display = indexed > 0      ? '' : 'none';
     el.classList.add('on');
+    refreshReportButtonVisibility();
   }
+
+  // ── Indexing report ─────────────────────────────────────────────────────────
+  async function refreshReportButtonVisibility() {
+    const btn = document.getElementById('index-report-btn');
+    if (!btn) return;
+    const r = await fetch('/api/index/report').catch(() => null);
+    btn.style.display = (r && r.ok) ? '' : 'none';
+  }
+
+  function _escape(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  let _reportItems = [];
+  let _reportFilter = 'problems';
+
+  async function showIndexReport() {
+    const overlay = document.getElementById('report-overlay');
+    const body    = document.getElementById('report-body');
+    body.innerHTML = '<div class="report-empty">Loading…</div>';
+    overlay.classList.add('on');
+    const r = await fetch('/api/index/report').catch(() => null);
+    if (!r || !r.ok) {
+      body.innerHTML = '<div class="report-empty">No report available yet. Run indexing first.</div>';
+      return;
+    }
+    const data = await r.json();
+    _reportItems = data.items || [];
+    const counts = data.counts || {};
+    const problems =
+      (counts.skipped_unsupported || 0) +
+      (counts.skipped_empty || 0) +
+      (counts.extraction_failed || 0) +
+      (counts.no_attachment_on_disk || 0);
+    _reportFilter = problems > 0 ? 'problems' : 'all';
+
+    const finished = data.finished_at ? new Date(data.finished_at).toLocaleString() : '—';
+    const scope    = data.collection ? `collection "${_escape(data.collection)}"` : 'whole library';
+    const dur      = data.duration_s != null ? ` · ${data.duration_s}s` : '';
+
+    body.innerHTML = `
+      <div class="report-meta">Last run: ${_escape(finished)} · ${_escape(scope)}${_escape(dur)}${data.incremental ? ' · incremental' : ''}</div>
+      <div class="report-summary">
+        ${_renderStat(counts.indexed || 0, 'Indexed')}
+        ${_renderStat(counts.skipped_unsupported || 0, 'Unsupported')}
+        ${_renderStat(counts.skipped_empty || 0, 'No text extracted')}
+        ${_renderStat(counts.extraction_failed || 0, 'Extraction failed')}
+        ${_renderStat(counts.no_attachment_on_disk || 0, 'File missing')}
+        ${_renderStat((data.vectors_stored || 0).toLocaleString(), 'Vectors stored')}
+      </div>
+      <div class="report-tabs">
+        <button class="report-tab" data-filter="problems" onclick="setReportFilter('problems')">Problems (${problems})</button>
+        <button class="report-tab" data-filter="all" onclick="setReportFilter('all')">All (${_reportItems.length})</button>
+        <button class="report-tab" data-filter="indexed" onclick="setReportFilter('indexed')">Indexed (${counts.indexed || 0})</button>
+      </div>
+      <div id="report-table-wrap"></div>
+    `;
+    setReportFilter(_reportFilter);
+  }
+
+  function _renderStat(num, label) {
+    return `<div class="report-stat">
+      <div class="report-stat-num">${_escape(num)}</div>
+      <div class="report-stat-lbl">${_escape(label)}</div>
+    </div>`;
+  }
+
+  function setReportFilter(filter) {
+    _reportFilter = filter;
+    document.querySelectorAll('.report-tab').forEach(t => {
+      t.classList.toggle('on', t.dataset.filter === filter);
+    });
+    const wrap  = document.getElementById('report-table-wrap');
+    const rows  = _reportItems.filter(it => {
+      if (filter === 'all') return true;
+      if (filter === 'indexed') return it.status === 'indexed';
+      return it.status !== 'indexed';
+    });
+    if (rows.length === 0) {
+      wrap.innerHTML = '<div class="report-empty">Nothing to show in this view.</div>';
+      return;
+    }
+    wrap.innerHTML = `<table class="report-table">
+      <thead><tr>
+        <th>Status</th><th>Title</th><th>Path</th><th>Detail</th>
+      </tr></thead>
+      <tbody>${rows.map(_reportRow).join('')}</tbody>
+    </table>`;
+  }
+
+  function _reportRow(it) {
+    const detail = it.error
+      ? `<td class="report-error">${_escape(it.error)}</td>`
+      : it.status === 'indexed'
+        ? `<td>${it.chunks} chunks</td>`
+        : `<td>—</td>`;
+    return `<tr>
+      <td>${_escape(_statusLabel(it.status))}</td>
+      <td>${_escape(it.title || 'Untitled')}</td>
+      <td class="report-path">${_escape(it.attach_path || '')}</td>
+      ${detail}
+    </tr>`;
+  }
+
+  function _statusLabel(s) {
+    return ({
+      'indexed':                'Indexed',
+      'skipped_unsupported':    'Unsupported',
+      'skipped_empty':          'No text extracted',
+      'extraction_failed':      'Extraction failed',
+      'no_attachment_on_disk':  'File missing',
+    })[s] || s;
+  }
+
+  function closeIndexReport() {
+    document.getElementById('report-overlay').classList.remove('on');
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeIndexReport();
+  });
 
   async function indexNow() {
     const coll   = document.getElementById('coll-select').value;

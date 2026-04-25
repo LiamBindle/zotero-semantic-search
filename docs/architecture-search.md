@@ -50,7 +50,7 @@ Detected at startup via `GET /api/tags`. When absent, standard embedding search 
 |----------|---------|---------|
 | `ZOTERO_DB` | `/zotero/zotero.sqlite` | Zotero database path (container); `~/Zotero/zotero.sqlite` (host dev) |
 | `ZOTERO_STORAGE` | `/zotero/storage` | Attachment files root (container); `~/Zotero/storage` (host dev) |
-| `CHROMA_PATH` | `/data/chroma` | Vector store (container); `~/.local/share/zotero-semantic-search/chroma` (host dev) |
+| `CHROMA_PATH` | `/data/chroma` | Vector store (container); `~/.local/share/zotero-private-search/chroma` (host dev) |
 | `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | fastembed model identifier |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `llama3.2` | LLM for HyDE, expansion, summary |

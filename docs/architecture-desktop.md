@@ -86,7 +86,7 @@ On any `error-*` state, the logs window is opened automatically (`openLogsWindow
 
 | | Dev | Packaged |
 |---|---|---|
-| Image ref | `zotero-semantic-search-dev:latest` | `ghcr.io/…:vYEAR.N` (from `app.getVersion()`) |
+| Image ref | `zotero-private-search-dev:latest` | `ghcr.io/…:vYEAR.N` (from `app.getVersion()`) |
 | Compose | `build: context: <repo-root>` | `image:` only |
 | Start | `up --build -d` (layer cache = fast restarts) | `pull` + `up -d` |
 

@@ -1,10 +1,13 @@
 import gc
 import hashlib
+import json
 import logging
 import os
 import shutil
 import sqlite3
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +20,7 @@ log = logging.getLogger(__name__)
 
 CHROMA_COLLECTION = "zotero_docs"
 EMBED_BATCH = 8  # small batches keep peak tensor memory low
+REPORT_FILENAME = "indexing-report.json"
 
 # ── SQLite queries ─────────────────────────────────────────────────────────────
 
@@ -96,11 +100,18 @@ def _make_id(item_id: int, attach_key: str, chunk_idx: int) -> str:
 
 # ── Main indexing entry point ──────────────────────────────────────────────────
 
-def _resolvable_items(
+def _candidate_items(
     db_path: str, storage_dir: str, collection: str | None = None
-) -> list[tuple]:
-    """Return [(item_id, attach_key, attach_path, row, creators_by_item, coll_by_item), ...]
-    for attachments that exist on disk, optionally filtered to a single collection."""
+) -> tuple[list[tuple], list[tuple]]:
+    """Return ``(resolvable, missing)`` for items in the (optionally filtered)
+    collection.
+
+    - ``resolvable`` is a list of tuples for attachments that exist on disk:
+      ``(item_id, attach_key, attach_path, row, creators_by_item, coll_by_item)``
+    - ``missing`` lists items whose attachment metadata is in Zotero but
+      whose file is absent on disk: ``(item_id, attach_key, raw_path, row,
+      creators_by_item, coll_by_item)``
+    """
     conn, tmp_db = _open_db(db_path)
     try:
         items = conn.execute(_ITEMS_SQL).fetchall()
@@ -120,15 +131,27 @@ def _resolvable_items(
     for r in coll_rows:
         coll_by_item.setdefault(r["itemID"], []).append(r["collectionName"])
 
-    result = []
+    resolvable: list[tuple] = []
+    missing: list[tuple] = []
     for row in items:
         if collection and collection not in coll_by_item.get(row["itemID"], []):
             continue
         attach_path = _resolve_path(row["attach_path"], storage_dir, row["attach_key"])
         if attach_path:
-            result.append((row["itemID"], row["attach_key"], attach_path,
-                           row, creators_by_item, coll_by_item))
-    return result
+            resolvable.append((row["itemID"], row["attach_key"], attach_path,
+                               row, creators_by_item, coll_by_item))
+        else:
+            missing.append((row["itemID"], row["attach_key"], row["attach_path"] or "",
+                            row, creators_by_item, coll_by_item))
+    return resolvable, missing
+
+
+def _resolvable_items(
+    db_path: str, storage_dir: str, collection: str | None = None
+) -> list[tuple]:
+    """Back-compat wrapper for callers that only need the on-disk subset."""
+    resolvable, _ = _candidate_items(db_path, storage_dir, collection)
+    return resolvable
 
 
 def get_pending_count(
@@ -153,18 +176,46 @@ def run_indexing(
     progress_cb=None,
     incremental: bool = True,
     collection: str | None = None,
+    report_path: str | None = None,
 ) -> dict:
-    candidates = _resolvable_items(db_path, storage_dir, collection)
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    started_perf = time.perf_counter()
+    resolvable, missing = _candidate_items(db_path, storage_dir, collection)
 
-    if incremental and candidates:
+    if incremental and resolvable:
         first_chunk_ids = [_make_id(item_id, attach_key, 0)
-                           for item_id, attach_key, *_ in candidates]
+                           for item_id, attach_key, *_ in resolvable]
         existing = set(chroma_collection.get(ids=first_chunk_ids)["ids"])
-        candidates = [c for c, cid in zip(candidates, first_chunk_ids)
+        candidates = [c for c, cid in zip(resolvable, first_chunk_ids)
                       if cid not in existing]
+    else:
+        candidates = list(resolvable)
 
     total = len(candidates)
     vectors_stored = 0
+    items_report: list[dict] = []
+    counts = {
+        "indexed": 0,
+        "skipped_unsupported": 0,
+        "skipped_empty": 0,
+        "extraction_failed": 0,
+        "no_attachment_on_disk": len(missing),
+    }
+
+    # Files Zotero references but cannot find on disk are reported even
+    # though we never opened them — they would otherwise vanish silently.
+    for item_id, attach_key, raw_path, row, creators_by_item, coll_by_item in missing:
+        items_report.append({
+            "item_id": str(item_id),
+            "title": row["title"] or "Untitled",
+            "authors": "; ".join(creators_by_item.get(item_id, [])),
+            "year": (row["year"] or "")[:4],
+            "collections": "; ".join(coll_by_item.get(item_id, [])),
+            "attach_path": raw_path,
+            "status": "no_attachment_on_disk",
+            "chunks": 0,
+            "error": None,
+        })
 
     for idx, (item_id, attach_key, attach_path, row, creators_by_item, coll_by_item) in enumerate(candidates):
         title = row["title"] or "Untitled"
@@ -175,9 +226,35 @@ def run_indexing(
         if progress_cb:
             progress_cb(idx, total, f"Indexing: {title}")
 
-        chunks = extract(attach_path)
-        if not chunks:
+        chunks, status, error = extract(attach_path)
+
+        item_entry = {
+            "item_id": str(item_id),
+            "title": title,
+            "authors": authors,
+            "year": year,
+            "collections": coll_str,
+            "attach_path": attach_path,
+            "status": "indexed",
+            "chunks": 0,
+            "error": error,
+        }
+
+        if status == "unsupported":
+            item_entry["status"] = "skipped_unsupported"
+            counts["skipped_unsupported"] += 1
+            items_report.append(item_entry)
+            continue
+        if status == "empty":
+            item_entry["status"] = "skipped_empty"
+            counts["skipped_empty"] += 1
+            items_report.append(item_entry)
             log.debug("No chunks extracted from %s", attach_path)
+            continue
+        if status == "failed":
+            item_entry["status"] = "extraction_failed"
+            counts["extraction_failed"] += 1
+            items_report.append(item_entry)
             continue
 
         log.info("item %d (%s): %d chunks", item_id, Path(attach_path).name, len(chunks))
@@ -204,17 +281,41 @@ def run_indexing(
 
         chroma_collection.upsert(ids=ids_buf, embeddings=embs_buf, metadatas=metas_buf)
 
+        item_entry["chunks"] = len(chunks)
+        counts["indexed"] += 1
+        items_report.append(item_entry)
+
         del chunks, texts, vectors, ids_buf, embs_buf, metas_buf
         gc.collect()
 
     if progress_cb:
         progress_cb(total, total, "Done")
 
-    return {
+    finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    duration_s = round(time.perf_counter() - started_perf, 2)
+
+    report = {
         "status": "done",
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_s": duration_s,
+        "collection": collection,
+        "incremental": incremental,
         "items_processed": total,
         "vectors_stored": vectors_stored,
+        "counts": counts,
+        "items": items_report,
     }
+
+    if report_path:
+        try:
+            Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2)
+        except OSError as e:
+            log.warning("Could not persist indexing report to %s: %s", report_path, e)
+
+    return report
 
 
 # ── Collection index helpers ───────────────────────────────────────────────────

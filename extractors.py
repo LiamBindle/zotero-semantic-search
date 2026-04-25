@@ -356,19 +356,28 @@ _DISPATCH: dict[str, object] = {
 }
 
 
-def extract(path: str) -> list[dict]:
+def extract(path: str) -> tuple[list[dict], str, str | None]:
     """Extract text chunks from a file.
 
-    Dispatches to the appropriate extractor based on file extension.
-    Returns [] for unsupported formats or on unrecoverable errors.
-    Each chunk is {"text": str, "location": str}.
+    Returns ``(chunks, status, error)`` where ``status`` is one of:
+
+    - ``"ok"``           — chunks were produced
+    - ``"unsupported"``  — file extension not in the dispatch table
+    - ``"empty"``        — extractor ran but produced no chunks (e.g. a
+                           scanned PDF with no OCR layer)
+    - ``"failed"``       — extractor raised; ``error`` carries the message
+
+    ``error`` is only populated when ``status == "failed"``.
     """
     suffix = Path(path).suffix.lower()
     fn = _DISPATCH.get(suffix)
     if fn is None:
-        return []
+        return [], "unsupported", None
     try:
-        return fn(path)  # type: ignore[call-arg]
+        chunks = fn(path)  # type: ignore[call-arg]
     except Exception as e:
         log.warning("Extraction failed for %s: %s", Path(path).name, e)
-        return []
+        return [], "failed", f"{type(e).__name__}: {e}"
+    if not chunks:
+        return [], "empty", None
+    return chunks, "ok", None

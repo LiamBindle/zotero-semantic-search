@@ -1,5 +1,5 @@
-appId: io.github.liambindle.zotero-semantic-search
-productName: Zotero Semantic Search
+appId: io.github.liambindle.zotero-private-search
+productName: Zotero Private Search
 
 directories:
   output: dist
@@ -34,4 +34,4 @@ linux:
 publish:
   provider: github
   owner: LiamBindle
-  repo: zotero-semantic-search
+  repo: zotero-private-search

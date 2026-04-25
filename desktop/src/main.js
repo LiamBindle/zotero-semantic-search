@@ -49,9 +49,9 @@ const POLL_TIMEOUT  = 3 * 60 * 1000;
 const IS_DEV = !app.isPackaged;
 
 function getImageRef() {
-  if (IS_DEV) return 'zotero-semantic-search-dev:latest';
+  if (IS_DEV) return 'zotero-private-search-dev:latest';
   const [maj, min] = app.getVersion().split('.');
-  return `ghcr.io/liambindle/zotero-semantic-search:v${maj}.${min}`;
+  return `ghcr.io/liambindle/zotero-private-search:v${maj}.${min}`;
 }
 
 // ── Logging ──────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ function openLogsWindow() {
     height: 420,
     minWidth: 400,
     minHeight: 300,
-    title: 'Logs — Zotero Semantic Search',
+    title: 'Logs — Zotero Private Search',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -126,7 +126,7 @@ function openMonitorWindow() {
     height: 500,
     minWidth: 300,
     minHeight: 300,
-    title: 'Monitor — Zotero Semantic Search',
+    title: 'Monitor — Zotero Private Search',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -149,13 +149,13 @@ function generateComposeFile() {
 
   const serviceHeader = IS_DEV
     ? [
-        '  zotero-search:',
+        '  zotero-private-search:',
         `    build:`,
         `      context: "${path.join(__dirname, '..', '..').replace(/\\/g, '/')}"`,
         `    image: ${imageRef}`,
       ]
     : [
-        '  zotero-search:',
+        '  zotero-private-search:',
         `    image: ${imageRef}`,
       ];
 
@@ -163,7 +163,7 @@ function generateComposeFile() {
     'services:',
     ...serviceHeader,
     '    ports:',
-    '      - "8765:8765"',
+    '      - "127.0.0.1:8765:8765"',
     '    volumes:',
     `      - "${zoteroPath}:/zotero:ro"`,
     '      - chroma-data:/data/chroma',
@@ -435,7 +435,7 @@ function startStatsStream() {
         try {
           const d = JSON.parse(line);
           const name = d.Name || d.Container || '';
-          if (!name.includes('zotero-search')) continue;
+          if (!name.includes('zotero-private-search')) continue;
           broadcastToRenderers('stats', {
             cpu: d.CPUPerc, mem: d.MemUsage,
             cpus: getCpuPercents(),
@@ -573,7 +573,7 @@ function createWindow() {
     minHeight: 400,
     resizable: true,
     fullscreenable: false,
-    title: 'Zotero Semantic Search',
+    title: 'Zotero Private Search',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

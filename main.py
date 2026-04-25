@@ -15,7 +15,14 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import ollama as _ollama
-from indexer import CHROMA_COLLECTION, get_collections, get_item_ids_for_collection, get_pending_count, run_indexing
+from indexer import (
+    CHROMA_COLLECTION,
+    REPORT_FILENAME,
+    get_collections,
+    get_item_ids_for_collection,
+    get_pending_count,
+    run_indexing,
+)
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -30,8 +37,9 @@ _ZOTERO_DEFAULT = _HOME / "Zotero"
 ZOTERO_DB      = os.environ.get("ZOTERO_DB",            str(_ZOTERO_DEFAULT / "zotero.sqlite"))
 ZOTERO_STORAGE = os.environ.get("ZOTERO_STORAGE",       str(_ZOTERO_DEFAULT / "storage"))
 EMBED_MODEL    = os.environ.get("EMBED_MODEL",           "nomic-ai/nomic-embed-text-v1.5")
-MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-semantic-search" / "models"))
-CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-semantic-search" / "chroma"))
+MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-private-search" / "models"))
+CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-private-search" / "chroma"))
+REPORT_PATH    = os.environ.get("INDEX_REPORT_PATH",     str(Path(CHROMA_PATH).parent / REPORT_FILENAME))
 OLLAMA_URL     = os.environ.get("OLLAMA_URL",            "http://localhost:11434")
 OLLAMA_MODEL   = os.environ.get("OLLAMA_MODEL",          "llama3.2")
 APP_VERSION    = os.environ.get("APP_VERSION",            "dev")
@@ -50,6 +58,25 @@ _index_state: dict = {
     "message": "idle",
     "last_result": None,
 }
+
+
+def _load_persisted_report() -> dict | None:
+    try:
+        with open(REPORT_PATH, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, _json.JSONDecodeError) as e:
+        log.warning("Could not load previous indexing report at %s: %s", REPORT_PATH, e)
+        return None
+
+
+def _summarize_result(result: dict | None) -> dict | None:
+    """Strip the per-item list from a report — the polling status endpoint
+    doesn't need to ship every entry on every tick. Counts and totals stay."""
+    if not result:
+        return result
+    return {k: v for k, v in result.items() if k != "items"}
 
 
 @asynccontextmanager
@@ -78,6 +105,12 @@ async def lifespan(app: FastAPI):
                  OLLAMA_URL, OLLAMA_MODEL)
     else:
         log.info("Ollama not detected at %s — standard embedding search only.", OLLAMA_URL)
+
+    # Restore the previous run's report so the "View indexing report" link
+    # works across restarts, not just within the current process.
+    persisted = _load_persisted_report()
+    if persisted:
+        _index_state["last_result"] = persisted
 
     yield
 
@@ -211,6 +244,7 @@ async def start_index(incremental: bool = True, collection: str = ""):
                 progress_cb=_progress,
                 incremental=incremental,
                 collection=coll,
+                report_path=REPORT_PATH,
             )
             _index_state["last_result"] = result
         except Exception as e:
@@ -247,13 +281,39 @@ async def delete_index(collection: str = ""):
 
 @app.get("/api/index/status")
 async def index_status():
-    return dict(_index_state)
+    state = dict(_index_state)
+    state["last_result"] = _summarize_result(state.get("last_result"))
+    return state
+
+
+@app.get("/api/index/report")
+async def index_report():
+    """Return the most recent full indexing report (with the per-item list).
+
+    Falls back to the persisted JSON file if the in-memory state has been
+    cleared (e.g. between restarts before any new run completes).
+    """
+    result = _index_state.get("last_result")
+    if not result or "items" not in result:
+        result = _load_persisted_report()
+    if not result:
+        return JSONResponse({"error": "no report yet"}, status_code=404)
+    return result
 
 
 @app.get("/api/open")
 async def open_file(path: str):
+    storage_root = Path(ZOTERO_STORAGE).resolve()
+    try:
+        target = Path(path).resolve()
+    except (OSError, ValueError):
+        return JSONResponse({"error": "invalid path"}, status_code=400)
+    if storage_root not in target.parents and target != storage_root:
+        return JSONResponse({"error": "path outside Zotero storage"}, status_code=400)
+    if not target.exists():
+        return JSONResponse({"error": "file not found"}, status_code=404)
     cmd = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.Popen([cmd, path])
+    subprocess.Popen([cmd, str(target)])
     return {"ok": True}
 
 

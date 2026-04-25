@@ -24,5 +24,5 @@ until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
 done
 echo "Ollama ready."
 
-echo "Starting Zotero Semantic Search on http://0.0.0.0:8765"
+echo "Starting Zotero Private Search on http://0.0.0.0:8765"
 exec pixi run uvicorn main:app --host 0.0.0.0 --port 8765 --log-level info
