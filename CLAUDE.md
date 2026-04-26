@@ -4,7 +4,7 @@ Local semantic search for Zotero libraries. FastAPI + ChromaDB service in Docker
 
 ## Development commands
 
-Uses [pixi](https://pixi.sh) (Linux only — pixi has no macOS/Windows platform entries in this repo).
+Uses [pixi](https://pixi.sh) (Linux and macOS — no Windows platform entries in this repo).
 
 ```bash
 pixi run dev          # FastAPI dev server on :8765 with hot-reload

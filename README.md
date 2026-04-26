@@ -97,7 +97,7 @@ Once the startup screen clears, you're ready to search.
 
 ## Local development
 
-Requires [pixi](https://pixi.sh) (Linux only).
+Requires [pixi](https://pixi.sh) (Linux and macOS).
 
 ```
 pixi run dev          # live-reload dev server on http://localhost:8765
@@ -105,7 +105,7 @@ pixi run desktop      # Electron app (standard Linux / macOS)
 pixi run nix-desktop  # Electron app on NixOS
 ```
 
-Run `ollama serve` separately if you want AI features during development.
+Run `ollama serve` separately — required for search and summaries to work.
 
 ---
 
