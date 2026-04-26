@@ -55,45 +55,29 @@ In addition, defense-in-depth measures are applied:
 The fact that you do not have to trust this README is the point. Run
 these checks against your own running container.
 
-### 1. Confirm outbound traffic is blocked from the API container
+### 1. Confirm the API container has no external network
 
 ```bash
-docker compose exec zotero-private-search curl -s --max-time 5 https://example.com
-# Expected: connection times out, curl exits non-zero
-```
-
-### 2. Confirm the API container has no external network
-
-```bash
-docker inspect $(docker compose ps -q zotero-private-search) \
+docker inspect $(docker ps --filter name=zotero-private-search -q) \
   --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
 # Expected: only the isolated network appears — no public/bridge network
 ```
 
-### 3. Confirm the isolated network has no gateway
+### 2. Confirm the isolated network has no gateway
 
 ```bash
 docker network inspect \
-  $(docker inspect $(docker compose ps -q zotero-private-search) \
+  $(docker inspect $(docker ps --filter name=zotero-private-search -q) \
     --format '{{range $k,$v := .NetworkSettings.Networks}}{{$v.NetworkID}}{{end}}') \
   --format '{{.Internal}}'
 # Expected: true
 ```
 
-### 4. Confirm the entrypoint logged isolation at startup
+The UI's Network Isolation badge runs an active TCP probe to `1.1.1.1:443`
+from inside the container on startup. A green ✓ means the probe timed out
+(egress blocked). A red ✕ means it connected — investigate immediately.
 
-```bash
-docker compose logs zotero-private-search | grep '\[security\]'
-# Expected:
-#   [security] Network egress blocked via Docker internal network.
-```
-
-The in-process TCP probe to `1.1.1.1:443` runs on startup and is
-exposed at `GET /api/airgap`, which the UI surfaces as a header badge.
-A green ✓ badge means the probe timed out (egress blocked). A
-red ✕ badge means the probe got through — investigate immediately.
-
-### 5. Audit the source
+### 3. Audit the source
 
 The source is AGPL-3.0. The relevant files are short and self-contained:
 

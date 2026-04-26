@@ -32,14 +32,7 @@ In addition:
 - The source is AGPL-3.0 so your IT department, ethics board, or collaborators can verify these claims independently
 - This works on Linux, macOS, and Windows — no platform-specific caveats
 
-To verify the network block yourself:
-
-```bash
-docker compose exec zotero-private-search curl -s --max-time 5 https://example.com
-# Expected: connection timed out
-```
-
-See [SECURITY.md](SECURITY.md) for the full threat model, including what's out of scope.
+See [SECURITY.md](SECURITY.md) for the full threat model and independent verification steps.
 
 ---
 
