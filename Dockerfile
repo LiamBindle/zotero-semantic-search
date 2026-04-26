@@ -3,7 +3,7 @@ FROM debian:bookworm-slim
 # System dependencies
 # libgomp1 is required by onnxruntime (used by fastembed) and other ML libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates libgomp1 zstd iptables \
+        curl ca-certificates libgomp1 zstd \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama

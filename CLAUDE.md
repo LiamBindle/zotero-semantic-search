@@ -30,7 +30,7 @@ Use the `/release` Claude skill. It computes the next CalVer version, asks for c
 ## Key constraints
 
 - **pymupdf** must stay in `[tool.pixi.pypi-dependencies]`, not conda deps. The conda-forge build dynamically links libmupdf, which is absent on NixOS; the pip wheel bundles it.
-- **`DISABLE_NETWORK_ISOLATION=1`** is set in the generated `docker-compose.yml`. Docker Desktop on macOS/Windows lacks `NET_ADMIN`, so iptables egress blocking is skipped. Production Linux Docker (e.g. CI) does enforce it.
+- **Network isolation** is enforced via `internal: true` on the Docker Compose network — no default gateway, so the container has no route to external IPs. Works on Linux, macOS, and Windows without `NET_ADMIN`.
 - **`IS_DEV = !app.isPackaged`** in the Electron main process controls whether compose uses `build:` (local source) or pulls the pinned GHCR image.
 
 ## Architecture docs

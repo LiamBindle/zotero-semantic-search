@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "Zotero Private Search"
+abstract: >-
+  Verifiably private semantic search for Zotero libraries. Runs entirely
+  in a Docker container with kernel-level iptables egress blocking, so
+  documents and queries cannot leave the local machine. Aimed at
+  researchers handling sensitive material — indigenous knowledge
+  interviews, IRB-bound human-subjects data, privileged legal materials,
+  and unpublished manuscripts.
+type: software
+authors:
+  - family-names: "Bindle"
+    given-names: "Liam"
+license: AGPL-3.0
+repository-code: "https://github.com/LiamBindle/zotero-private-search"
+url: "https://github.com/LiamBindle/zotero-private-search"
+keywords:
+  - zotero
+  - semantic-search
+  - privacy
+  - airgap
+  - local-ai
+  - indigenous-research
+  - irb

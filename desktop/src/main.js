@@ -49,9 +49,9 @@ const POLL_TIMEOUT  = 3 * 60 * 1000;
 const IS_DEV = !app.isPackaged;
 
 function getImageRef() {
-  if (IS_DEV) return 'zotero-semantic-search-dev:latest';
+  if (IS_DEV) return 'zotero-private-search-dev:latest';
   const [maj, min] = app.getVersion().split('.');
-  return `ghcr.io/liambindle/zotero-semantic-search:v${maj}.${min}`;
+  return `ghcr.io/liambindle/zotero-private-search:v${maj}.${min}`;
 }
 
 // ── Logging ──────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ function openLogsWindow() {
     height: 420,
     minWidth: 400,
     minHeight: 300,
-    title: 'Logs — Zotero Semantic Search',
+    title: 'Logs — Zotero Private Search',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -126,7 +126,7 @@ function openMonitorWindow() {
     height: 500,
     minWidth: 300,
     minHeight: 300,
-    title: 'Monitor — Zotero Semantic Search',
+    title: 'Monitor — Zotero Private Search',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -142,42 +142,84 @@ function openMonitorWindow() {
   monitorWindow.on('closed', () => { monitorWindow = null; stopStatsStream(); });
 }
 
-// ── docker-compose.yml generation ────────────────────────────────────────────
+// ── docker-compose.yml + nginx.conf generation ────────────────────────────────
+function generateNginxConfig(dest) {
+  const content = [
+    'events {}',
+    'http {',
+    '    server {',
+    '        listen 8765;',
+    '        location / {',
+    '            proxy_pass         http://zotero-private-search:8765;',
+    '            proxy_http_version 1.1;',
+    '            proxy_set_header   Host $host;',
+    '            proxy_buffering    off;',
+    '            proxy_read_timeout 3600s;',
+    '        }',
+    '    }',
+    '}',
+    '',
+  ].join('\n');
+  fs.writeFileSync(dest, content, 'utf8');
+}
+
 function generateComposeFile() {
-  const zoteroPath = path.join(os.homedir(), 'Zotero').replace(/\\/g, '/');
-  const imageRef   = getImageRef();
+  const zoteroPath   = path.join(os.homedir(), 'Zotero').replace(/\\/g, '/');
+  const imageRef     = getImageRef();
+  const userDataDir  = app.getPath('userData');
+  const nginxConfDest = path.join(userDataDir, 'nginx.conf');
+  const nginxConfPath = nginxConfDest.replace(/\\/g, '/');
+
+  fs.mkdirSync(userDataDir, { recursive: true });
+  generateNginxConfig(nginxConfDest);
 
   const serviceHeader = IS_DEV
     ? [
-        '  zotero-search:',
+        '  zotero-private-search:',
         `    build:`,
         `      context: "${path.join(__dirname, '..', '..').replace(/\\/g, '/')}"`,
         `    image: ${imageRef}`,
       ]
     : [
-        '  zotero-search:',
+        '  zotero-private-search:',
         `    image: ${imageRef}`,
       ];
 
   const content = [
     'services:',
     ...serviceHeader,
-    '    ports:',
-    '      - "8765:8765"',
     '    volumes:',
     `      - "${zoteroPath}:/zotero:ro"`,
     '      - chroma-data:/data/chroma',
-    '    environment:',
-    '      - DISABLE_NETWORK_ISOLATION=1',
+    '    networks:',
+    '      - isolated',
+    '    restart: unless-stopped',
+    '',
+    '  gateway:',
+    '    image: nginx:alpine',
+    '    ports:',
+    '      - "127.0.0.1:8765:8765"',
+    '    volumes:',
+    `      - "${nginxConfPath}:/etc/nginx/nginx.conf:ro"`,
+    '    networks:',
+    '      - isolated',
+    '      - public',
+    '    depends_on:',
+    '      - zotero-private-search',
     '    restart: unless-stopped',
     '',
     'volumes:',
     '  chroma-data:',
     '',
+    'networks:',
+    '  isolated:',
+    '    internal: true',
+    '  public:',
+    '    driver: bridge',
+    '',
   ].join('\n');
 
-  const dest = path.join(app.getPath('userData'), 'docker-compose.yml');
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const dest = path.join(userDataDir, 'docker-compose.yml');
   fs.writeFileSync(dest, content, 'utf8');
   return dest;
 }
@@ -435,7 +477,7 @@ function startStatsStream() {
         try {
           const d = JSON.parse(line);
           const name = d.Name || d.Container || '';
-          if (!name.includes('zotero-search')) continue;
+          if (!name.includes('zotero-private-search') || name.includes('gateway')) continue;
           broadcastToRenderers('stats', {
             cpu: d.CPUPerc, mem: d.MemUsage,
             cpus: getCpuPercents(),
@@ -573,7 +615,7 @@ function createWindow() {
     minHeight: 400,
     resizable: true,
     fullscreenable: false,
-    title: 'Zotero Semantic Search',
+    title: 'Zotero Private Search',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

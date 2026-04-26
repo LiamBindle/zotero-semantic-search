@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zotero Semantic Search</title>
+  <title>Zotero Private Search</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -96,7 +96,8 @@
       text-overflow: ellipsis;
       max-width: 260px;
     }
-    .h-ollama-badge {
+
+    .h-airgap-badge {
       font-size: 0.67rem;
       padding: 0.2rem 0.5rem 0.2rem 0.42rem;
       border-radius: var(--r-sm);
@@ -107,16 +108,10 @@
       white-space: nowrap;
       font-family: ui-monospace, monospace;
     }
-    .h-ollama-badge::before {
-      content: '';
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .h-ollama-on  { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-    .h-ollama-on::before  { background: #22c55e; }
-    .h-ollama-off { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
-    .h-ollama-off::before { background: var(--border-md); }
+    .h-airgap-yes { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .h-airgap-yes::before { content: '✓'; font-size: 0.75rem; line-height: 1; font-weight: 700; color: #16a34a; flex-shrink: 0; }
+    .h-airgap-no  { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+    .h-airgap-no::before  { content: '✕'; font-size: 0.75rem; line-height: 1; font-weight: 700; flex-shrink: 0; }
 
     /* ── Layout ──────────────────────────────────────────────────────── */
     main {
@@ -241,7 +236,6 @@
       border-radius: var(--r-sm);
       cursor: pointer;
       transition: all .15s;
-      display: none;
       font-family: inherit;
     }
     #suggest-btn:hover { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
@@ -471,13 +465,12 @@
     }
 
     #index-status {
-      display: none;
+      display: inline-flex;
       align-items: center;
       gap: 0.35rem;
       font-size: 0.74rem;
       color: var(--text-muted);
     }
-    #index-status.on { display: inline-flex; }
     .index-status-dot {
       width: 6px; height: 6px;
       border-radius: 50%;
@@ -487,6 +480,24 @@
     .index-status-dot.full  { background: #22c55e; }
     .index-status-dot.part  { background: #f59e0b; }
     .ctrl-break { flex-basis: 100%; height: 0; }
+    #index-counter-btn {
+      font-size: 0.74rem;
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 0.1rem 0.4rem;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+      font-variant-numeric: tabular-nums;
+    }
+    #index-counter-btn:hover:not(:disabled) {
+      border-color: var(--accent-border);
+      color: var(--accent);
+      background: var(--accent-bg);
+    }
+    #index-counter-btn:disabled { cursor: default; }
     .index-action-btn {
       font-size: 0.72rem;
       background: none;
@@ -499,8 +510,164 @@
       font-family: inherit;
     }
     .index-action-btn:disabled { opacity: .5; cursor: default; pointer-events: none; }
-    #index-clear-btn:hover { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
-    #index-now-btn:hover  { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
+    #index-clear-btn:hover  { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
+    #index-now-btn:hover   { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
+    #prog-cancel-btn {
+      font-size: 0.71rem;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+    #prog-cancel-btn:hover:not(:disabled) { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
+    #prog-cancel-btn:disabled { opacity: .5; cursor: default; }
+
+    /* ── Index summary modal ───────────────────────────────────────── */
+    #summary-overlay {
+      position: fixed; inset: 0;
+      background: rgba(17, 24, 39, .55);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 2rem;
+    }
+    #summary-overlay.on { display: flex; }
+    #summary-modal {
+      background: var(--surface);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-md);
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #summary-modal header {
+      position: static;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: none;
+    }
+    #summary-title { font-size: 0.95rem; font-weight: 600; flex: 1; }
+    #summary-close {
+      background: none; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 0.2rem 0.55rem;
+      border-radius: var(--r-sm); cursor: pointer; font-family: inherit;
+      font-size: 0.78rem;
+    }
+    #summary-close:hover { border-color: var(--border-md); color: var(--text); }
+    #summary-search {
+      flex-basis: 100%;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.82rem;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      color: var(--text);
+      background: var(--surface-2);
+      outline: none;
+    }
+    #summary-search:focus { border-color: var(--accent-border); background: var(--surface); }
+    #summary-body { padding: 1rem 1.25rem; overflow: auto; }
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .summary-stat {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 0.5rem 0.7rem;
+    }
+    .summary-stat-num { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+    .summary-stat-lbl { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .summary-tabs {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .summary-tab {
+      background: none; border: none;
+      padding: 0.45rem 0.7rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .summary-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .summary-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .summary-row {
+      display: grid;
+      grid-template-columns: 8px 1fr;
+      gap: 0.6rem;
+      padding: 0.65rem 0.4rem;
+      border-bottom: 1px solid var(--border);
+      align-items: start;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-pill {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-top: 0.5rem;
+      background: var(--border-md);
+      flex-shrink: 0;
+    }
+    .summary-pill.indexed              { background: #22c55e; }
+    .summary-pill.skipped_unsupported  { background: #94a3b8; }
+    .summary-pill.skipped_empty        { background: #f59e0b; }
+    .summary-pill.extraction_failed    { background: #dc2626; }
+    .summary-pill.no_attachment_on_disk { background: #dc2626; }
+    .summary-row-body {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      min-width: 0;
+    }
+    .summary-row-text { flex: 1; min-width: 0; }
+    .summary-cite {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .summary-cite-authors { color: var(--text-md); }
+    .summary-cite-year    { color: var(--text-muted); margin-left: 0.2rem; }
+    .summary-cite-title   { display: block; font-weight: 500; margin-top: 0.1rem; }
+    .summary-sub {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .summary-sub.error { color: #b91c1c; font-family: ui-monospace, monospace; font-size: 0.72rem; }
+    .summary-empty {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 1rem;
+      text-align: center;
+    }
 
     .empty { color: var(--text-muted); font-size: 0.875rem; padding: 1rem 0; line-height: 1.6; }
   </style>
@@ -514,13 +681,14 @@
            stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
       </svg>
-      <span class="h-title">Semantic Search</span>
+      <span class="h-title">Private Search</span>
       <div class="h-divider"></div>
       <span class="h-subtitle">Zotero</span>
     </div>
     <span id="version-badge" class="h-badge" style="display:none"></span>
     <span id="embed-badge" class="h-badge"></span>
-    <span id="ollama-badge" class="h-ollama-badge h-ollama-off">Ollama offline</span>
+    <span id="ollama-badge" class="h-badge"></span>
+    <span id="airgap-badge" class="h-airgap-badge h-airgap-no" title="Network egress status">Network Isolation</span>
   </div>
 </header>
 
@@ -574,7 +742,7 @@
       </select>
       <div id="index-status">
         <div class="index-status-dot" id="index-dot"></div>
-        <span id="index-status-text"></span>
+        <button id="index-counter-btn" onclick="showIndexSummary()"></button>
         <button class="index-action-btn" id="index-now-btn" onclick="indexNow()">↺ Index</button>
         <button class="index-action-btn" id="index-clear-btn" onclick="clearCollectionIndex()">Clear</button>
       </div>
@@ -603,6 +771,7 @@
       <div class="prog-spinner"></div>
       <span id="prog-msg">Indexing…</span>
       <span id="prog-cnt"></span>
+      <button id="prog-cancel-btn" onclick="cancelIndexing()">Cancel</button>
     </div>
     <div class="prog-track"><div id="prog-fill" class="pulse"></div></div>
     <span id="prog-eta"></span>
@@ -642,24 +811,47 @@
 
 </main>
 
+<div id="summary-overlay" onclick="if(event.target===this) closeIndexSummary()">
+  <div id="summary-modal">
+    <header>
+      <span id="summary-title">Index summary</span>
+      <button id="summary-close" onclick="closeIndexSummary()">Close</button>
+      <input id="summary-search" type="search"
+             placeholder="Filter by title or author…"
+             oninput="setSummarySearch(this.value)">
+    </header>
+    <div id="summary-body"></div>
+  </div>
+</div>
+
 <script>
   const _sp        = new URLSearchParams(location.search);
   const isElectron  = _sp.has('__electron');
   const bridgePort  = _sp.get('__bridge');
 
-  let _ollamaAvailable = false;
   let _lastPrompt = '';
   let _resultMap = new Map();  // 'result-N' → result object
+  let _cancelRequested = false;
 
   // ── Startup ──────────────────────────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
     loadCollections();
     checkStatus();
+    checkAirgap();
     updateIndexStatus();
     document.getElementById('coll-select').addEventListener('change', updateIndexStatus);
     setInterval(() => { loadCollections(); updateIndexStatus(); }, 30_000);
   });
+
+  async function checkAirgap() {
+    const badge = document.getElementById('airgap-badge');
+    const d = await fetch('/api/airgap').then(r => r.json()).catch(() => null);
+    const yes = d?.mode === 'blocked';
+    badge.className = `h-airgap-badge ${yes ? 'h-airgap-yes' : 'h-airgap-no'}`;
+    badge.textContent = 'Network Isolation';
+    badge.title = yes ? 'No internet connection' : (d?.detail || 'Network egress is not blocked');
+  }
 
   async function loadCollections() {
     const d = await fetch('/api/collections').then(r => r.json()).catch(() => null);
@@ -685,17 +877,8 @@
       vb.textContent = d.app_version;
       vb.style.display = '';
     }
-    const badge = document.getElementById('ollama-badge');
-    if (d?.ollama?.available) {
-      _ollamaAvailable = true;
-      document.getElementById('suggest-btn').style.display = 'inline-block';
-      const v = d.ollama.version ? ` v${d.ollama.version}` : '';
-      badge.textContent = `Ollama${v}`;
-      badge.className = 'h-ollama-badge h-ollama-on';
-    } else {
-      badge.textContent = 'Ollama offline';
-      badge.className = 'h-ollama-badge h-ollama-off';
-    }
+    const v = d?.ollama?.version ? ` v${d.ollama.version}` : '';
+    document.getElementById('ollama-badge').textContent = `Ollama${v}`;
   }
 
 
@@ -770,17 +953,15 @@
         if (!s.running) {
           clearInterval(timer);
           document.getElementById('prog-eta').textContent = '';
-          if (s.last_result?.error) {
-            setProgress(0, 0, 'Indexing failed: ' + s.last_result.error);
-            setTimeout(() => showProgress(false), 5000);
-          } else if (s.last_result) {
-            setProgress(
-              s.last_result.items_processed, s.last_result.items_processed,
-              `Done — ${s.last_result.vectors_stored.toLocaleString()} vectors across ${s.last_result.items_processed} documents`
-            );
+          document.getElementById('prog-cancel-btn').disabled = false;
+          if (_cancelRequested) {
+            setProgress(s.current, s.total, 'Indexing cancelled.');
+          } else {
+            setProgress(s.current, s.total, `Done — ${s.current} of ${s.total} indexed.`);
             await loadCollections();
-            setTimeout(() => showProgress(false), 3000);
           }
+          _cancelRequested = false;
+          setTimeout(() => showProgress(false), 3000);
           resolve();
         }
       }, 5000);
@@ -791,15 +972,197 @@
     const coll   = document.getElementById('coll-select').value;
     const params = coll ? '?' + new URLSearchParams({ collection: coll }) : '';
     const data   = await fetch('/api/index/pending' + params).then(r => r.json()).catch(() => null);
-    const el     = document.getElementById('index-status');
-    if (!data || data.total === 0) { el.classList.remove('on'); return; }
+    if (!data || data.total === 0) return;
     const indexed = data.total - data.pending;
     document.getElementById('index-dot').className =
       data.pending === 0 ? 'index-status-dot full' : indexed === 0 ? 'index-status-dot' : 'index-status-dot part';
-    document.getElementById('index-status-text').textContent = `${indexed} / ${data.total} indexed`;
+    document.getElementById('index-counter-btn').textContent = `${indexed} / ${data.total} indexed`;
     document.getElementById('index-now-btn').style.display   = data.pending > 0 ? '' : 'none';
     document.getElementById('index-clear-btn').style.display = indexed > 0      ? '' : 'none';
-    el.classList.add('on');
+  }
+
+  function _escape(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  let _summaryItems = [];
+  let _summaryFilter = 'problems';
+  let _summarySearch = '';
+
+  async function showIndexSummary() {
+    const overlay = document.getElementById('summary-overlay');
+    const body    = document.getElementById('summary-body');
+    body.innerHTML = '<div class="summary-empty">Loading…</div>';
+    overlay.classList.add('on');
+    document.getElementById('summary-search').value = '';
+    _summarySearch = '';
+    const r = await fetch('/api/index/summary').catch(() => null);
+    if (!r || !r.ok) {
+      body.innerHTML = '<div class="summary-empty">No summary available yet. Run indexing first.</div>';
+      return;
+    }
+    const data = await r.json();
+
+    const coll = document.getElementById('coll-select').value;
+    let allItems = data.items || [];
+    if (coll) {
+      allItems = allItems.filter(it => {
+        return (it.collections || '').split(';').map(s => s.trim()).includes(coll);
+      });
+    }
+    _summaryItems = allItems;
+
+    // Recompute counts from the (possibly filtered) item list
+    const counts = {};
+    for (const it of allItems) counts[it.status] = (counts[it.status] || 0) + 1;
+    const vectorsStored = allItems.reduce((n, it) => n + (it.chunks || 0), 0);
+
+    const problems =
+      (counts.skipped_unsupported || 0) +
+      (counts.skipped_empty || 0) +
+      (counts.extraction_failed || 0) +
+      (counts.no_attachment_on_disk || 0);
+    _summaryFilter = problems > 0 ? 'problems' : 'all';
+
+    document.getElementById('summary-title').textContent =
+      coll ? `Index summary — ${coll}` : 'Index summary';
+
+    body.innerHTML = `
+      <div class="summary-stats">
+        ${_renderStat(counts.indexed || 0, 'Indexed')}
+        ${_renderStat(counts.skipped_unsupported || 0, 'Unsupported')}
+        ${_renderStat(counts.skipped_empty || 0, 'No text extracted')}
+        ${_renderStat(counts.extraction_failed || 0, 'Extraction failed')}
+        ${_renderStat(counts.no_attachment_on_disk || 0, 'File missing')}
+        ${_renderStat(vectorsStored.toLocaleString(), 'Vectors stored')}
+      </div>
+      <div class="summary-tabs">
+        <button class="summary-tab" data-filter="problems" onclick="setSummaryFilter('problems')">Problems (${problems})</button>
+        <button class="summary-tab" data-filter="all" onclick="setSummaryFilter('all')">All (${_summaryItems.length})</button>
+        <button class="summary-tab" data-filter="indexed" onclick="setSummaryFilter('indexed')">Indexed (${counts.indexed || 0})</button>
+      </div>
+      <div id="summary-list-wrap"></div>
+    `;
+    _renderSummaryList();
+  }
+
+  function _renderStat(num, label) {
+    return `<div class="summary-stat">
+      <div class="summary-stat-num">${_escape(num)}</div>
+      <div class="summary-stat-lbl">${_escape(label)}</div>
+    </div>`;
+  }
+
+  function setSummaryFilter(filter) {
+    _summaryFilter = filter;
+    _renderSummaryList();
+  }
+
+  function setSummarySearch(q) {
+    _summarySearch = (q || '').trim().toLowerCase();
+    _renderSummaryList();
+  }
+
+  function _renderSummaryList() {
+    document.querySelectorAll('.summary-tab').forEach(t => {
+      t.classList.toggle('on', t.dataset.filter === _summaryFilter);
+    });
+    const wrap = document.getElementById('summary-list-wrap');
+    if (!wrap) return;
+    const matchesFilter = it => {
+      if (_summaryFilter === 'all') return true;
+      if (_summaryFilter === 'indexed') return it.status === 'indexed';
+      return it.status !== 'indexed';
+    };
+    const matchesSearch = it => {
+      if (!_summarySearch) return true;
+      const hay = ((it.title || '') + ' ' + (it.authors || '')).toLowerCase();
+      return hay.includes(_summarySearch);
+    };
+    const rows = _summaryItems.filter(it => matchesFilter(it) && matchesSearch(it));
+    if (rows.length === 0) {
+      const msg = _summarySearch
+        ? `No items match "${_escape(_summarySearch)}".`
+        : 'Nothing to show in this view.';
+      wrap.innerHTML = `<div class="summary-empty">${msg}</div>`;
+      return;
+    }
+    wrap.innerHTML = `<ul class="summary-list">${rows.map(_summaryRow).join('')}</ul>`;
+  }
+
+  // "Last, First; Last, First" → "Smith" / "Smith & Doe" / "Smith et al."
+  function _briefAuthors(authorsStr) {
+    if (!authorsStr) return '';
+    const lasts = authorsStr.split(';')
+      .map(a => a.trim())
+      .filter(Boolean)
+      .map(a => a.split(',')[0].trim())
+      .filter(Boolean);
+    if (lasts.length === 0) return '';
+    if (lasts.length === 1) return lasts[0];
+    if (lasts.length === 2) return `${lasts[0]} & ${lasts[1]}`;
+    return `${lasts[0]} et al.`;
+  }
+
+  function _summaryRow(it) {
+    const authors = _briefAuthors(it.authors);
+    const year    = (it.year || '').trim();
+    const title   = it.title || 'Untitled';
+    const fullCite = [authors, year ? `(${year})` : '', title].filter(Boolean).join(' ');
+
+    const coll  = (it.collections || '').split(';')[0].trim();
+    let detail;
+    if (it.error) {
+      detail = `<div class="summary-sub error">${coll ? _escape(coll) + ' · ' : ''}${_escape(it.error)}</div>`;
+    } else {
+      const txt = ({
+        'indexed':                `${it.chunks} chunk${it.chunks === 1 ? '' : 's'}`,
+        'skipped_unsupported':    'Unsupported file type',
+        'skipped_empty':          'No extractable text',
+        'extraction_failed':      'Extraction failed',
+        'no_attachment_on_disk':  'Attachment file missing',
+      })[it.status] || it.status;
+      const subParts = [coll, txt].filter(Boolean).join(' · ');
+      detail = `<div class="summary-sub">${_escape(subParts)}</div>`;
+    }
+
+    const openBtn = it.attach_path && isElectron
+      ? `<button class="open-btn" style="flex-shrink:0;margin-top:0.15rem" data-path="${_escape(it.attach_path)}" onclick="openFile(this.dataset.path)">↗ Open file</button>`
+      : '';
+
+    return `<li class="summary-row">
+      <span class="summary-pill ${_escape(it.status)}"></span>
+      <div class="summary-row-body">
+        <div class="summary-row-text">
+          <div class="summary-cite">
+            ${authors ? `<span class="summary-cite-authors">${_escape(authors)}</span>` : ''}
+            ${year    ? `<span class="summary-cite-year">(${_escape(year)})</span>` : ''}
+            <span class="summary-cite-title">${_escape(title)}</span>
+          </div>
+          ${detail}
+        </div>
+        ${openBtn}
+      </div>
+    </li>`;
+  }
+
+  function closeIndexSummary() {
+    document.getElementById('summary-overlay').classList.remove('on');
+    document.getElementById('summary-title').textContent = 'Index summary';
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeIndexSummary();
+  });
+
+  async function cancelIndexing() {
+    _cancelRequested = true;
+    const btn = document.getElementById('prog-cancel-btn');
+    btn.disabled = true;
+    btn.textContent = 'Cancelling…';
+    await fetch('/api/index/cancel', { method: 'POST' }).catch(() => {});
   }
 
   async function indexNow() {
@@ -811,6 +1174,9 @@
     const toIndex = pending?.pending ?? 0;
     if (toIndex === 0) { btn.disabled = false; return; }
     showProgress(true);
+    const cancelBtn = document.getElementById('prog-cancel-btn');
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = 'Cancel';
     setProgress(null, pending.total,
       `Indexing ${toIndex} document${toIndex === 1 ? '' : 's'}${coll ? ` in "${coll}"` : ''}…`);
     const indexParams = new URLSearchParams({ incremental: 'true' });
@@ -885,6 +1251,9 @@
                             .then(r => r.json()).catch(() => null);
       if (pending && pending.pending > 0) {
         showProgress(true);
+        const cancelBtn2 = document.getElementById('prog-cancel-btn');
+        cancelBtn2.disabled = false;
+        cancelBtn2.textContent = 'Cancel';
         setProgress(null, pending.total,
           `Indexing ${pending.pending} new document${pending.pending === 1 ? '' : 's'} in "${coll}"…`);
         const r = await fetch('/api/index?' + new URLSearchParams({ incremental: 'true', collection: coll }),
@@ -909,7 +1278,7 @@
       const data = await fetch('/api/search?' + params)
                          .then(r => r.json()).catch(() => ({ results: [] }));
       renderResults(data.results, data.search_context);
-      if (_ollamaAvailable && data.results?.length > 0) {
+      if (data.results?.length > 0) {
         document.getElementById('summary-area').style.display = 'block';
       }
     } finally {

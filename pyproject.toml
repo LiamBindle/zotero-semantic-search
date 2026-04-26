@@ -40,7 +40,7 @@ delete-index = """python -c "
 import os, chromadb
 from chromadb.config import Settings
 from pathlib import Path
-p = os.environ.get('CHROMA_PATH', str(Path.home() / '.local/share/zotero-semantic-search/chroma'))
+p = os.environ.get('CHROMA_PATH', str(Path.home() / '.local/share/zotero-private-search/chroma'))
 c = chromadb.PersistentClient(path=p, settings=Settings(anonymized_telemetry=False))
 c.delete_collection('zotero_docs')
 print('Index deleted from', p)

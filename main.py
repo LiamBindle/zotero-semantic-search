@@ -1,11 +1,11 @@
 import json as _json
 import logging
 import os
-import subprocess
-import sys
+import socket
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -15,7 +15,15 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import ollama as _ollama
-from indexer import CHROMA_COLLECTION, get_collections, get_item_ids_for_collection, get_pending_count, run_indexing
+from indexer import (
+    CHROMA_COLLECTION,
+    INDEX_DB_FILENAME,
+    IndexDB,
+    get_collections,
+    get_item_ids_for_collection,
+    get_pending_count,
+    run_indexing,
+)
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -30,8 +38,9 @@ _ZOTERO_DEFAULT = _HOME / "Zotero"
 ZOTERO_DB      = os.environ.get("ZOTERO_DB",            str(_ZOTERO_DEFAULT / "zotero.sqlite"))
 ZOTERO_STORAGE = os.environ.get("ZOTERO_STORAGE",       str(_ZOTERO_DEFAULT / "storage"))
 EMBED_MODEL    = os.environ.get("EMBED_MODEL",           "nomic-ai/nomic-embed-text-v1.5")
-MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-semantic-search" / "models"))
-CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-semantic-search" / "chroma"))
+MODEL_CACHE    = os.environ.get("FASTEMBED_CACHE_PATH",  str(_HOME / ".cache" / "zotero-private-search" / "models"))
+CHROMA_PATH    = os.environ.get("CHROMA_PATH",           str(_HOME / ".local" / "share" / "zotero-private-search" / "chroma"))
+INDEX_DB_PATH  = os.environ.get("INDEX_DB_PATH",         str(Path(CHROMA_PATH) / INDEX_DB_FILENAME))
 OLLAMA_URL     = os.environ.get("OLLAMA_URL",            "http://localhost:11434")
 OLLAMA_MODEL   = os.environ.get("OLLAMA_MODEL",          "llama3.2")
 APP_VERSION    = os.environ.get("APP_VERSION",            "dev")
@@ -41,20 +50,49 @@ APP_VERSION    = os.environ.get("APP_VERSION",            "dev")
 _model: TextEmbedding | None = None
 _chroma_client = None
 _chroma_col = None
-_ollama_available: bool = False
+_index_db: IndexDB | None = None
+_cancel_event: Event = Event()
+_airgap_state: dict = {
+    "airgapped": None,
+    "mode": "unknown",
+    "detail": "Probe has not run yet.",
+    "probed_at": None,
+}
 
 _index_state: dict = {
     "running": False,
     "current": 0,
     "total": 0,
     "message": "idle",
-    "last_result": None,
 }
+
+
+def _probe_airgap() -> dict:
+    """TCP-only egress probe to a public IP. No DNS, no HTTP, no payload —
+    just a SYN to 1.1.1.1:443. If the Docker internal network is enforcing
+    the egress block, the SYN never gets a response and we time out
+    (mode=blocked). If the probe connects, egress is not blocked (mode=breach)."""
+    probed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        with socket.create_connection(("1.1.1.1", 443), timeout=3.0):
+            return {
+                "airgapped": False,
+                "mode": "breach",
+                "detail": "TCP probe to 1.1.1.1:443 succeeded — egress is NOT blocked.",
+                "probed_at": probed_at,
+            }
+    except (socket.timeout, OSError) as e:
+        return {
+            "airgapped": True,
+            "mode": "blocked",
+            "detail": f"TCP probe to 1.1.1.1:443 blocked ({type(e).__name__}).",
+            "probed_at": probed_at,
+        }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _chroma_client, _chroma_col, _ollama_available
+    global _model, _chroma_client, _chroma_col, _index_db
 
     log.info("Loading embedding model '%s' from %s ...", EMBED_MODEL, MODEL_CACHE)
     _model = TextEmbedding(EMBED_MODEL, cache_dir=MODEL_CACHE)
@@ -72,12 +110,15 @@ async def lifespan(app: FastAPI):
     log.info("ChromaDB ready. Collection '%s' has %d vectors.",
              CHROMA_COLLECTION, _chroma_col.count())
 
-    _ollama_available = _ollama.check_available(OLLAMA_URL)
-    if _ollama_available:
-        log.info("Ollama available at %s (model: %s) — HyDE and query expansion enabled.",
-                 OLLAMA_URL, OLLAMA_MODEL)
-    else:
-        log.info("Ollama not detected at %s — standard embedding search only.", OLLAMA_URL)
+    _index_db = IndexDB(INDEX_DB_PATH)
+    _index_db.mark_interrupted_runs()
+    log.info("Index DB ready at %s.", INDEX_DB_PATH)
+
+    log.info("Ollama at %s (model: %s).", OLLAMA_URL, OLLAMA_MODEL)
+
+    global _airgap_state
+    _airgap_state = _probe_airgap()
+    log.info("[security] Airgap probe: %s — %s", _airgap_state["mode"], _airgap_state["detail"])
 
     yield
 
@@ -96,12 +137,20 @@ async def index():
 
 @app.get("/api/status")
 async def api_status():
-    version = await _ollama.get_version(OLLAMA_URL) if _ollama_available else None
+    version = await _ollama.get_version(OLLAMA_URL)
     return {
-        "ollama": {"available": _ollama_available, "model": OLLAMA_MODEL, "version": version},
+        "ollama": {"model": OLLAMA_MODEL, "version": version},
         "embed_model": EMBED_MODEL,
         "app_version": APP_VERSION,
     }
+
+
+@app.get("/api/airgap")
+async def api_airgap(recheck: bool = False):
+    global _airgap_state
+    if recheck or _airgap_state.get("probed_at") is None:
+        _airgap_state = _probe_airgap()
+    return _airgap_state
 
 
 # ── Search ─────────────────────────────────────────────────────────────────────
@@ -112,15 +161,12 @@ async def search(q: str = "", collection: str = "",
     if not q.strip():
         return {"results": [], "search_context": None}
 
-    # HyDE: if Ollama available, embed a hypothetical matching document instead of q
+    # HyDE: embed a hypothetical matching document instead of the raw query
     search_context: str | None = None
-    if _ollama_available:
-        hyp = await _ollama.hyde_text(q, OLLAMA_MODEL, OLLAMA_URL)
-        if hyp:
-            search_context = hyp
-            vector = next(_model.embed([hyp])).tolist()
-        else:
-            vector = next(_model.embed([q])).tolist()
+    hyp = await _ollama.hyde_text(q, OLLAMA_MODEL, OLLAMA_URL)
+    if hyp:
+        search_context = hyp
+        vector = next(_model.embed([hyp])).tolist()
     else:
         vector = next(_model.embed([q])).tolist()
 
@@ -165,7 +211,7 @@ async def search(q: str = "", collection: str = "",
 
 @app.get("/api/expand")
 async def api_expand(q: str = ""):
-    if not q.strip() or not _ollama_available:
+    if not q.strip():
         return {"expanded": None}
     expanded = await _ollama.expand_query(q, OLLAMA_MODEL, OLLAMA_URL)
     return {"expanded": expanded}
@@ -193,9 +239,10 @@ async def start_index(incremental: bool = True, collection: str = ""):
     coll = collection or None
 
     def _run(incremental: bool, coll: str | None):
+        _cancel_event.clear()
         _index_state.update({
             "running": True, "current": 0, "total": 0,
-            "message": "Starting...", "last_result": None,
+            "message": "Starting...",
         })
 
         def _progress(current, total, message):
@@ -203,7 +250,7 @@ async def start_index(incremental: bool = True, collection: str = ""):
                                   "message": message})
 
         try:
-            result = run_indexing(
+            run_indexing(
                 db_path=ZOTERO_DB,
                 storage_dir=ZOTERO_STORAGE,
                 model=_model,
@@ -211,16 +258,24 @@ async def start_index(incremental: bool = True, collection: str = ""):
                 progress_cb=_progress,
                 incremental=incremental,
                 collection=coll,
+                index_db=_index_db,
+                cancel_event=_cancel_event,
             )
-            _index_state["last_result"] = result
-        except Exception as e:
+        except Exception:
             log.exception("Indexing failed")
-            _index_state["last_result"] = {"error": str(e)}
         finally:
             _index_state["running"] = False
 
     Thread(target=_run, args=(incremental, coll), daemon=True).start()
     return {"status": "started"}
+
+
+@app.post("/api/index/cancel")
+async def cancel_index():
+    if not _index_state["running"]:
+        return JSONResponse({"error": "not running"}, status_code=409)
+    _cancel_event.set()
+    return {"ok": True}
 
 
 @app.delete("/api/index")
@@ -250,11 +305,14 @@ async def index_status():
     return dict(_index_state)
 
 
-@app.get("/api/open")
-async def open_file(path: str):
-    cmd = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.Popen([cmd, path])
-    return {"ok": True}
+@app.get("/api/index/summary")
+async def index_summary():
+    if not _index_db:
+        return JSONResponse({"error": "no summary yet"}, status_code=404)
+    result = _index_db.get_summary()
+    if not result:
+        return JSONResponse({"error": "no summary yet"}, status_code=404)
+    return result
 
 
 # ── AI Summary ─────────────────────────────────────────────────────────────────
@@ -267,7 +325,7 @@ class SummaryRequest(BaseModel):
 
 @app.post("/api/summary")
 async def api_summary(body: SummaryRequest):
-    if not _ollama_available or not body.q.strip() or not body.results:
+    if not body.q.strip() or not body.results:
         return JSONResponse({"error": "unavailable"}, status_code=503)
 
     async def event_stream():

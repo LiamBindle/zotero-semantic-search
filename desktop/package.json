@@ -1,8 +1,8 @@
 {
-  "name": "zotero-semantic-search",
-  "productName": "Zotero Semantic Search",
+  "name": "zotero-private-search",
+  "productName": "Zotero Private Search",
   "version": "0.0.0",
-  "description": "Local semantic search for your Zotero library",
+  "description": "Verifiably private semantic search for your Zotero library",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",

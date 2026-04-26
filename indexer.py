@@ -4,8 +4,11 @@ import logging
 import os
 import shutil
 import sqlite3
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,6 +20,128 @@ log = logging.getLogger(__name__)
 
 CHROMA_COLLECTION = "zotero_docs"
 EMBED_BATCH = 8  # small batches keep peak tensor memory low
+INDEX_DB_FILENAME = "index-log.db"
+
+
+class IndexDB:
+    """Persistent SQLite log of every item the indexer has processed.
+
+    WAL mode lets the API thread read concurrently while the indexing
+    thread writes. Each item is upserted immediately on completion, so
+    an interruption only loses the item currently being processed.
+    """
+
+    def __init__(self, db_path: str):
+        self.db_path = str(db_path)
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        with self._conn() as conn:
+            conn.executescript("""
+                PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS runs (
+                    run_id         TEXT PRIMARY KEY,
+                    started_at     TEXT NOT NULL,
+                    finished_at    TEXT,
+                    collection     TEXT,
+                    incremental    INTEGER NOT NULL,
+                    status         TEXT NOT NULL,
+                    vectors_stored INTEGER DEFAULT 0,
+                    duration_s     REAL
+                );
+                CREATE TABLE IF NOT EXISTS items (
+                    item_id     TEXT NOT NULL,
+                    attach_key  TEXT NOT NULL,
+                    run_id      TEXT NOT NULL,
+                    title       TEXT,
+                    authors     TEXT,
+                    year        TEXT,
+                    collections TEXT,
+                    attach_path TEXT,
+                    status      TEXT NOT NULL,
+                    chunks      INTEGER DEFAULT 0,
+                    error       TEXT,
+                    indexed_at  TEXT NOT NULL,
+                    PRIMARY KEY (item_id, attach_key)
+                );
+            """)
+
+    def _conn(self):
+        conn = sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def mark_interrupted_runs(self):
+        with self._conn() as conn:
+            conn.execute("UPDATE runs SET status='interrupted' WHERE status='running'")
+
+    def start_run(self, collection: str | None, incremental: bool) -> str:
+        run_id = str(uuid.uuid4())
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO runs (run_id, started_at, collection, incremental, status)"
+                " VALUES (?,?,?,?,'running')",
+                (run_id,
+                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                 collection, 1 if incremental else 0),
+            )
+        return run_id
+
+    def upsert_item(self, run_id: str, item: dict):
+        with self._conn() as conn:
+            conn.execute("""
+                INSERT INTO items
+                    (item_id, attach_key, run_id, title, authors, year,
+                     collections, attach_path, status, chunks, error, indexed_at)
+                VALUES
+                    (:item_id, :attach_key, :run_id, :title, :authors, :year,
+                     :collections, :attach_path, :status, :chunks, :error, :indexed_at)
+                ON CONFLICT(item_id, attach_key) DO UPDATE SET
+                    run_id=excluded.run_id, title=excluded.title,
+                    authors=excluded.authors, year=excluded.year,
+                    collections=excluded.collections, attach_path=excluded.attach_path,
+                    status=excluded.status, chunks=excluded.chunks,
+                    error=excluded.error, indexed_at=excluded.indexed_at
+            """, {**item, "run_id": run_id,
+                  "indexed_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+    def finish_run(self, run_id: str, vectors_stored: int, duration_s: float,
+                   status: str = "done"):
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE runs"
+                " SET status=?, finished_at=?, vectors_stored=?, duration_s=?"
+                " WHERE run_id=?",
+                (status, datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                 vectors_stored, duration_s, run_id),
+            )
+
+    def get_summary(self) -> dict | None:
+        with self._conn() as conn:
+            run = conn.execute(
+                "SELECT * FROM runs ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+            if not run:
+                return None
+            items = conn.execute(
+                "SELECT * FROM items ORDER BY title COLLATE NOCASE"
+            ).fetchall()
+
+        items_list = [dict(r) for r in items]
+        counts: dict[str, int] = {}
+        for it in items_list:
+            counts[it["status"]] = counts.get(it["status"], 0) + 1
+
+        run = dict(run)
+        return {
+            "status":         run["status"],
+            "started_at":     run["started_at"],
+            "finished_at":    run["finished_at"],
+            "duration_s":     run["duration_s"],
+            "collection":     run["collection"],
+            "incremental":    bool(run["incremental"]),
+            "vectors_stored": run["vectors_stored"] or 0,
+            "counts":         counts,
+            "items":          items_list,
+        }
 
 # ── SQLite queries ─────────────────────────────────────────────────────────────
 
@@ -96,11 +221,18 @@ def _make_id(item_id: int, attach_key: str, chunk_idx: int) -> str:
 
 # ── Main indexing entry point ──────────────────────────────────────────────────
 
-def _resolvable_items(
+def _candidate_items(
     db_path: str, storage_dir: str, collection: str | None = None
-) -> list[tuple]:
-    """Return [(item_id, attach_key, attach_path, row, creators_by_item, coll_by_item), ...]
-    for attachments that exist on disk, optionally filtered to a single collection."""
+) -> tuple[list[tuple], list[tuple]]:
+    """Return ``(resolvable, missing)`` for items in the (optionally filtered)
+    collection.
+
+    - ``resolvable`` is a list of tuples for attachments that exist on disk:
+      ``(item_id, attach_key, attach_path, row, creators_by_item, coll_by_item)``
+    - ``missing`` lists items whose attachment metadata is in Zotero but
+      whose file is absent on disk: ``(item_id, attach_key, raw_path, row,
+      creators_by_item, coll_by_item)``
+    """
     conn, tmp_db = _open_db(db_path)
     try:
         items = conn.execute(_ITEMS_SQL).fetchall()
@@ -120,15 +252,27 @@ def _resolvable_items(
     for r in coll_rows:
         coll_by_item.setdefault(r["itemID"], []).append(r["collectionName"])
 
-    result = []
+    resolvable: list[tuple] = []
+    missing: list[tuple] = []
     for row in items:
         if collection and collection not in coll_by_item.get(row["itemID"], []):
             continue
         attach_path = _resolve_path(row["attach_path"], storage_dir, row["attach_key"])
         if attach_path:
-            result.append((row["itemID"], row["attach_key"], attach_path,
-                           row, creators_by_item, coll_by_item))
-    return result
+            resolvable.append((row["itemID"], row["attach_key"], attach_path,
+                               row, creators_by_item, coll_by_item))
+        else:
+            missing.append((row["itemID"], row["attach_key"], row["attach_path"] or "",
+                            row, creators_by_item, coll_by_item))
+    return resolvable, missing
+
+
+def _resolvable_items(
+    db_path: str, storage_dir: str, collection: str | None = None
+) -> list[tuple]:
+    """Back-compat wrapper for callers that only need the on-disk subset."""
+    resolvable, _ = _candidate_items(db_path, storage_dir, collection)
+    return resolvable
 
 
 def get_pending_count(
@@ -153,20 +297,48 @@ def run_indexing(
     progress_cb=None,
     incremental: bool = True,
     collection: str | None = None,
+    index_db: IndexDB | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> dict:
-    candidates = _resolvable_items(db_path, storage_dir, collection)
+    started_perf = time.perf_counter()
+    run_id = index_db.start_run(collection, incremental) if index_db else None
+    resolvable, missing = _candidate_items(db_path, storage_dir, collection)
 
-    if incremental and candidates:
+    if incremental and resolvable:
         first_chunk_ids = [_make_id(item_id, attach_key, 0)
-                           for item_id, attach_key, *_ in candidates]
+                           for item_id, attach_key, *_ in resolvable]
         existing = set(chroma_collection.get(ids=first_chunk_ids)["ids"])
-        candidates = [c for c, cid in zip(candidates, first_chunk_ids)
+        candidates = [c for c, cid in zip(resolvable, first_chunk_ids)
                       if cid not in existing]
+    else:
+        candidates = list(resolvable)
 
     total = len(candidates)
     vectors_stored = 0
 
+    # Files Zotero references but cannot find on disk — upserted immediately
+    # so they appear in the summary even if indexing is later interrupted.
+    for item_id, attach_key, raw_path, row, creators_by_item, coll_by_item in missing:
+        item = {
+            "item_id": str(item_id),
+            "attach_key": attach_key,
+            "title": row["title"] or "Untitled",
+            "authors": "; ".join(creators_by_item.get(item_id, [])),
+            "year": (row["year"] or "")[:4],
+            "collections": "; ".join(coll_by_item.get(item_id, [])),
+            "attach_path": raw_path,
+            "status": "no_attachment_on_disk",
+            "chunks": 0,
+            "error": None,
+        }
+        if index_db and run_id:
+            index_db.upsert_item(run_id, item)
+
     for idx, (item_id, attach_key, attach_path, row, creators_by_item, coll_by_item) in enumerate(candidates):
+        if cancel_event and cancel_event.is_set():
+            log.info("Indexing cancelled after %d items.", idx)
+            break
+
         title = row["title"] or "Untitled"
         year = (row["year"] or "")[:4]
         authors = "; ".join(creators_by_item.get(item_id, []))
@@ -175,46 +347,71 @@ def run_indexing(
         if progress_cb:
             progress_cb(idx, total, f"Indexing: {title}")
 
-        chunks = extract(attach_path)
-        if not chunks:
+        chunks, status, error = extract(attach_path)
+
+        item_entry = {
+            "item_id": str(item_id),
+            "attach_key": attach_key,
+            "title": title,
+            "authors": authors,
+            "year": year,
+            "collections": coll_str,
+            "attach_path": attach_path,
+            "status": "indexed",
+            "chunks": 0,
+            "error": error,
+        }
+
+        if status == "unsupported":
+            item_entry["status"] = "skipped_unsupported"
+        elif status == "empty":
+            item_entry["status"] = "skipped_empty"
             log.debug("No chunks extracted from %s", attach_path)
-            continue
+        elif status == "failed":
+            item_entry["status"] = "extraction_failed"
+        else:
+            log.info("item %d (%s): %d chunks", item_id, Path(attach_path).name, len(chunks))
 
-        log.info("item %d (%s): %d chunks", item_id, Path(attach_path).name, len(chunks))
+            texts = [c["text"] for c in chunks]
+            vectors = [v.tolist() for v in model.embed(texts, batch_size=EMBED_BATCH)]
 
-        texts = [c["text"] for c in chunks]
-        vectors = [v.tolist() for v in model.embed(texts, batch_size=EMBED_BATCH)]
+            ids_buf, embs_buf, metas_buf = [], [], []
+            for chunk_idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
+                ids_buf.append(_make_id(item_id, attach_key, chunk_idx))
+                embs_buf.append(vec)
+                metas_buf.append({
+                    "item_id": str(item_id),
+                    "title": title,
+                    "authors": authors,
+                    "year": year,
+                    "collection_names": coll_str,
+                    "location": chunk["location"],
+                    "text": chunk["text"],
+                    "attach_key": attach_key,
+                    "attach_path": attach_path,
+                })
+                vectors_stored += 1
 
-        ids_buf, embs_buf, metas_buf = [], [], []
-        for chunk_idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
-            ids_buf.append(_make_id(item_id, attach_key, chunk_idx))
-            embs_buf.append(vec)
-            metas_buf.append({
-                "item_id": str(item_id),
-                "title": title,
-                "authors": authors,
-                "year": year,
-                "collection_names": coll_str,
-                "location": chunk["location"],
-                "text": chunk["text"],
-                "attach_key": attach_key,
-                "attach_path": attach_path,
-            })
-            vectors_stored += 1
+            chroma_collection.upsert(ids=ids_buf, embeddings=embs_buf, metadatas=metas_buf)
+            item_entry["chunks"] = len(chunks)
 
-        chroma_collection.upsert(ids=ids_buf, embeddings=embs_buf, metadatas=metas_buf)
+            del chunks, texts, vectors, ids_buf, embs_buf, metas_buf
+            gc.collect()
 
-        del chunks, texts, vectors, ids_buf, embs_buf, metas_buf
-        gc.collect()
+        # Persist immediately — a crash here loses at most one item.
+        if index_db and run_id:
+            index_db.upsert_item(run_id, item_entry)
 
     if progress_cb:
         progress_cb(total, total, "Done")
 
-    return {
-        "status": "done",
-        "items_processed": total,
-        "vectors_stored": vectors_stored,
-    }
+    cancelled = cancel_event is not None and cancel_event.is_set()
+    duration_s = round(time.perf_counter() - started_perf, 2)
+    if index_db and run_id:
+        index_db.finish_run(run_id, vectors_stored, duration_s,
+                            status="cancelled" if cancelled else "done")
+
+    return {"status": "cancelled" if cancelled else "done", "vectors_stored": vectors_stored}
 
 
 # ── Collection index helpers ───────────────────────────────────────────────────
