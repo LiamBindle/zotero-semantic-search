@@ -13,7 +13,7 @@
 
 ## Who this is for
 
-Zotero Private Search is for researchers who need a *verifiable* guarantee that documents never leave their machine — not just a claim, but something you can independently confirm. If "trust me, it runs locally" is good enough, [ZotSeek](https://github.com/introfini/ZotSeek) is a better fit.
+Zotero Private Search is for researchers who need a *verifiable* guarantee that documents never leave their machine — not just a claim, but something you can independently confirm. For general-purpose Zotero search, [ZotSeek](https://github.com/introfini/ZotSeek) is an excellent plugin with a broader feature set — it integrates directly into Zotero and doesn't require Docker.
 
 ---
 
