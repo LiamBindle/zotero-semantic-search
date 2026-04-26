@@ -13,9 +13,7 @@
 
 ## Who this is for
 
-Zotero Private Search is for researchers who need a *verifiable* guarantee that documents never leave their machine — indigenous knowledge interviews, IRB-bound human-subjects research, privileged legal materials, unpublished manuscripts, and other contexts where "trust me, it runs locally" isn't a strong enough claim.
-
-If you just want better search inside Zotero, [ZotSeek](https://github.com/introfini/ZotSeek) is an excellent Zotero plugin with a broader feature set and is a better fit for general use. This tool exists for the narrower case where the privacy guarantee itself is the requirement.
+Zotero Private Search is for researchers who need a *verifiable* guarantee that documents never leave their machine — not just a claim, but something you can independently confirm. If "trust me, it runs locally" is good enough, [ZotSeek](https://github.com/introfini/ZotSeek) is a better fit.
 
 ---
 
