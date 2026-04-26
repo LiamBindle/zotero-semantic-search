@@ -129,20 +129,10 @@
       white-space: nowrap;
       font-family: ui-monospace, monospace;
     }
-    .h-airgap-badge::before {
-      content: '';
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .h-airgap-blocked  { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-    .h-airgap-blocked::before  { background: #22c55e; }
-    .h-airgap-fallback { background: var(--amber-bg); color: var(--amber-text); border-color: #fcd34d; }
-    .h-airgap-fallback::before { background: #f59e0b; }
-    .h-airgap-breach   { background: #fef2f2; color: #991b1b; border-color: #fca5a5; font-weight: 600; }
-    .h-airgap-breach::before   { background: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.18); }
-    .h-airgap-unknown  { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
-    .h-airgap-unknown::before  { background: var(--border-md); }
+    .h-airgap-yes { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .h-airgap-yes::before { content: '✓'; font-size: 0.75rem; line-height: 1; font-weight: 700; color: #16a34a; flex-shrink: 0; }
+    .h-airgap-no  { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+    .h-airgap-no::before  { content: '✕'; font-size: 0.75rem; line-height: 1; font-weight: 700; flex-shrink: 0; }
 
     /* ── Layout ──────────────────────────────────────────────────────── */
     main {
@@ -708,7 +698,7 @@
     <span id="version-badge" class="h-badge" style="display:none"></span>
     <span id="embed-badge" class="h-badge"></span>
     <span id="ollama-badge" class="h-ollama-badge h-ollama-off">Ollama offline</span>
-    <span id="airgap-badge" class="h-airgap-badge h-airgap-unknown" title="Network egress status">Airgap: checking…</span>
+    <span id="airgap-badge" class="h-airgap-badge h-airgap-no" title="Network egress status">Airgap</span>
   </div>
 </header>
 
@@ -868,29 +858,10 @@
   async function checkAirgap() {
     const badge = document.getElementById('airgap-badge');
     const d = await fetch('/api/airgap').then(r => r.json()).catch(() => null);
-    if (!d) {
-      badge.className = 'h-airgap-badge h-airgap-unknown';
-      badge.textContent = 'Airgap: unknown';
-      badge.title = 'Could not reach /api/airgap';
-      return;
-    }
-    if (d.mode === 'blocked') {
-      badge.className = 'h-airgap-badge h-airgap-blocked';
-      badge.textContent = 'Airgap: blocked';
-      badge.title = d.detail;
-    } else if (d.mode === 'fallback') {
-      badge.className = 'h-airgap-badge h-airgap-fallback';
-      badge.textContent = 'Airgap: fallback';
-      badge.title = d.detail + ' — see SECURITY.md.';
-    } else if (d.mode === 'breach') {
-      badge.className = 'h-airgap-badge h-airgap-breach';
-      badge.textContent = 'Airgap: BREACH';
-      badge.title = d.detail + ' — see SECURITY.md.';
-    } else {
-      badge.className = 'h-airgap-badge h-airgap-unknown';
-      badge.textContent = 'Airgap: ' + (d.mode || 'unknown');
-      badge.title = d.detail || '';
-    }
+    const yes = d?.mode === 'blocked';
+    badge.className = `h-airgap-badge ${yes ? 'h-airgap-yes' : 'h-airgap-no'}`;
+    badge.textContent = 'Airgap';
+    badge.title = yes ? 'No internet connection' : (d?.detail || 'Network egress is not blocked');
   }
 
   async function loadCollections() {

@@ -7,29 +7,35 @@ verify it, and what is explicitly out of scope.
 
 ## What the privacy guarantee covers
 
-When the container is run on Linux with the `NET_ADMIN` capability (the
-default in `docker-compose.yml`), the entrypoint applies the following
-iptables rules **before** any application code starts:
+Two containers run side by side via Docker Compose:
 
-```bash
-iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -j DROP
-```
+- **`zotero-private-search`** — the FastAPI app, Ollama, and all model
+  weights. Attached *only* to the `isolated` network (`internal: true`).
+- **`gateway`** — a minimal nginx:alpine reverse proxy. Attached to
+  both `isolated` and `public` networks; owns the published port 8765.
 
-This is the entire egress policy:
+Docker's bridge driver omits the default gateway for `internal: true`
+networks, so the API container has no route to any external IP — on
+Linux, macOS, and Windows alike. This is enforced by Docker before any
+container code starts.
 
-1. Loopback traffic (between the FastAPI app and the local Ollama
-   instance, both inside the container) is permitted.
-2. Reply packets on already-established inbound connections are
-   permitted, so the UI on port 8765 stays reachable.
-3. Everything else outbound is dropped.
+The egress policy in practice:
 
-Because this is enforced in the kernel's netfilter layer, **no userspace
-process inside the container can bypass it** — not the embedding model,
-not Ollama, not a future Python dependency that decides to phone home,
-not a malicious package that sneaks into the supply chain after the
-image is built.
+1. The API container can reach the gateway (both are on `isolated`),
+   allowing nginx to forward responses back to the UI.
+2. The gateway receives connections from the host on port 8765 and
+   proxies them to the API container. It does not make outbound
+   connections to external IPs — its nginx config only specifies
+   `proxy_pass http://zotero-private-search:8765`.
+3. The API container has no route to the internet and no `NET_ADMIN`
+   capability. A root process inside it cannot modify network rules or
+   escape the isolation.
+
+Because this is enforced at Docker's network layer before any container
+code runs, **no userspace process inside the API container can bypass
+it** — not the embedding model, not Ollama, not a future Python
+dependency that decides to phone home, not a malicious package that
+sneaks into the supply chain after the image is built.
 
 In addition, defense-in-depth measures are applied:
 
@@ -49,52 +55,50 @@ In addition, defense-in-depth measures are applied:
 The fact that you do not have to trust this README is the point. Run
 these checks against your own running container.
 
-### 1. Confirm outbound traffic is blocked
+### 1. Confirm outbound traffic is blocked from the API container
 
 ```bash
 docker compose exec zotero-private-search curl -s --max-time 5 https://example.com
 # Expected: connection times out, curl exits non-zero
 ```
 
-### 2. Inspect the kernel filter table directly
+### 2. Confirm the API container has no external network
 
 ```bash
-docker compose exec zotero-private-search iptables -L OUTPUT -n -v
-# Expected: ACCEPT on lo, ACCEPT for ESTABLISHED,RELATED, DROP for the rest.
-# The DROP rule should show non-zero packet/byte counters after some
-# attempted egress, confirming it is actually catching traffic.
+docker inspect $(docker compose ps -q zotero-private-search) \
+  --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+# Expected: only the isolated network appears — no public/bridge network
 ```
 
-### 3. Confirm the entrypoint applied the rules at startup
+### 3. Confirm the isolated network has no gateway
+
+```bash
+docker network inspect \
+  $(docker inspect $(docker compose ps -q zotero-private-search) \
+    --format '{{range $k,$v := .NetworkSettings.Networks}}{{$v.NetworkID}}{{end}}') \
+  --format '{{.Internal}}'
+# Expected: true
+```
+
+### 4. Confirm the entrypoint logged isolation at startup
 
 ```bash
 docker compose logs zotero-private-search | grep '\[security\]'
-# Expected on Linux:
-#   [security] Network egress blocked via iptables.
-#   [security] Egress probe blocked — airgap verified.
-# Expected on Docker Desktop:
-#   [security] WARNING: Network isolation disabled via DISABLE_NETWORK_ISOLATION=1.
+# Expected:
+#   [security] Network egress blocked via Docker internal network.
 ```
 
-The second line is an active TCP probe to `1.1.1.1:443` performed by
-the entrypoint *after* applying the iptables rules. If the rules are
-in effect, the SYN is dropped and the probe times out (good). If you
-ever see `WARNING: egress probe to 1.1.1.1 succeeded — airgap is NOT
-in effect.`, the rules did not take effect and you should not trust
-the airgap claim.
+The in-process TCP probe to `1.1.1.1:443` runs on startup and is
+exposed at `GET /api/airgap`, which the UI surfaces as a header badge.
+A green ✓ badge means the probe timed out (egress blocked). A
+red ✕ badge means the probe got through — investigate immediately.
 
-The same probe runs in-process on startup and is exposed at
-`GET /api/airgap`, which the UI surfaces as a header badge. A green
-"Airgap: blocked" badge means the probe verified the block; an amber
-"Airgap: fallback" badge means you opted out of kernel isolation; a
-red "Airgap: BREACH" badge means the probe got through and you should
-investigate immediately.
-
-### 4. Audit the source
+### 5. Audit the source
 
 The source is AGPL-3.0. The relevant files are short and self-contained:
 
-- [`entrypoint.sh`](entrypoint.sh) — the iptables rules
+- [`entrypoint.sh`](entrypoint.sh) — startup log; no iptables needed
+- [`desktop/src/main.js`](desktop/src/main.js) — generates `docker-compose.yml` and `nginx.conf` at runtime
 - [`Dockerfile`](Dockerfile) — model bake-in, telemetry env vars
 - [`pyproject.toml`](pyproject.toml) — telemetry env vars for the dev
   environment
@@ -108,20 +112,6 @@ hour.
 
 Be honest about what this tool does **not** protect against.
 
-### macOS / Windows: kernel block is unavailable
-
-Docker Desktop on macOS and Windows runs containers inside a managed
-Linux VM and does not expose the `NET_ADMIN` capability needed to run
-`iptables` against the real host network stack. On these platforms the
-desktop launcher generates a `docker-compose.yml` with
-`DISABLE_NETWORK_ISOLATION=1` and the container falls back to the
-telemetry opt-out env vars.
-
-In practice that still means there is no code in this project that
-sends your documents anywhere. But it is a "no code does X" guarantee,
-not a "the kernel will physically prevent X" guarantee. **If verifiable
-network isolation is the reason you chose this tool, run it on Linux.**
-
 ### Physical access
 
 A user with physical access to the host machine can read `~/Zotero`,
@@ -133,15 +123,15 @@ is your operating system's job. Use full-disk encryption.
 
 A user who can `docker exec` into the container, run arbitrary commands
 as root on the host, or modify the image before it starts can do
-anything they want, including disabling the iptables rules. The threat
-model assumes the host is a workstation that *you* control.
+anything they want. The threat model assumes the host is a workstation
+that *you* control.
 
 ### Supply-chain attacks on the base image and dependencies
 
 Docker base images, Ollama, fastembed weights, and Python packages are
 pinned to specific versions, but they are not signed end-to-end. A
 sufficiently motivated attacker who compromises an upstream registry
-could ship a malicious build. The kernel-level egress block is
+could ship a malicious build. The Docker network isolation is
 specifically designed to mitigate this — even a backdoored dependency
 cannot exfiltrate data — but it does not eliminate the risk of, for
 example, code that corrupts the local index or causes a crash. Audit

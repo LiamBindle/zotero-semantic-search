@@ -4,10 +4,13 @@
 
 ```
 Electron (main.js)
-  ├── bridge HTTP server           → localhost:<random port> (file-open handler)
-  ├── generates docker-compose.yml → app.getPath('userData')
-  ├── docker compose up            → container on localhost:8765
-  └── WebContentsView              → loads http://localhost:8765/?__electron=1&__bridge=<port>
+  ├── bridge HTTP server                → localhost:<random port> (file-open handler)
+  ├── generates docker-compose.yml      → app.getPath('userData')
+  ├── generates nginx.conf              → app.getPath('userData')
+  ├── docker compose up                 → two containers:
+  │     ├── zotero-private-search       → isolated network only (no external route)
+  │     └── gateway (nginx:alpine)      → isolated + public networks, port 8765
+  └── WebContentsView                   → loads http://localhost:8765/?__electron=1&__bridge=<port>
 ```
 
 ## Electron process model
@@ -94,13 +97,13 @@ On any `error-*` state, the logs window is opened automatically (`openLogsWindow
 
 Base: `debian:bookworm-slim`. Layers from most to least stable:
 
-1. System packages (`libgomp1`, `iptables`, `curl`)
+1. System packages (`libgomp1`, `curl`)
 2. Ollama install + model bake (~4 GB)
 3. pixi + Python deps
 4. fastembed model bake (~270 MB)
 5. App source code
 
-`entrypoint.sh` optionally applies iptables egress blocking (`DISABLE_NETWORK_ISOLATION=1` skips it), starts Ollama, waits for readiness, then starts uvicorn on port 8765.
+`entrypoint.sh` logs that network isolation is active (the API container is on an `internal: true` Docker network with no external route), starts Ollama, waits for readiness, then starts uvicorn on port 8765. A separate `gateway` (nginx:alpine) service owns port 8765 and proxies to the API container; this lets Docker enforce egress isolation without breaking the published port.
 
 ## CI/CD
 

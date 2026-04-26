@@ -23,13 +23,14 @@ If you just want better search inside Zotero, [ZotSeek](https://github.com/intro
 
 Most "local" AI tools run on your machine but have no enforced network boundary — they could phone home, accidentally or otherwise, the moment a dependency updates or a misconfiguration slips through.
 
-Zotero Private Search runs inside a Docker container that applies iptables rules at startup to block all outbound network traffic at the kernel level. Only loopback traffic (between the app and the local AI models) is permitted. No library or process running inside the container can bypass this — not the embedding model, not Ollama, not a future dependency you didn't audit.
+Zotero Private Search uses a Docker sidecar architecture to enforce a hard network boundary. Two containers run side by side: the API container (FastAPI, Ollama, all model weights) is attached *only* to an isolated Docker network with `internal: true`, giving it no route to any external IP. A minimal nginx proxy sits in front, owns the published port, and forwards requests in — it has no outbound access of its own. No library or process inside the API container can reach the internet, not the embedding model, not Ollama, not a future dependency you didn't audit, and not a supply-chain compromise — there is no kernel capability to modify and no gateway to route through.
 
 In addition:
-- All model weights are baked into the Docker image at build time, so the container has no need to make a network request after first launch
+- All model weights are baked into the Docker image at build time, so the container has no reason to make a network request after first launch
 - Telemetry is disabled in every component (ChromaDB, fastembed, HuggingFace Hub, Ollama) via environment variables as a defense-in-depth measure
-- An active probe runs from inside the container on startup and during use; the result is surfaced in the UI as a status badge (`blocked` / `fallback` / `breach`) so the privacy guarantee is demonstrated rather than asserted
+- An active TCP probe runs from inside the container on startup and during use; the result is surfaced in the UI as a green ✓ badge (no internet connection confirmed) so the privacy guarantee is demonstrated rather than asserted
 - The source is AGPL-3.0 so your IT department, ethics board, or collaborators can verify these claims independently
+- This works on Linux, macOS, and Windows — no platform-specific caveats
 
 To verify the network block yourself:
 
@@ -40,13 +41,11 @@ docker compose exec zotero-private-search curl -s --max-time 5 https://example.c
 
 See [SECURITY.md](SECURITY.md) for the full threat model, including what's out of scope.
 
-> **macOS / Windows note:** Docker Desktop does not support the `NET_ADMIN` capability required for kernel-level egress blocking. On these platforms the container falls back to telemetry-only opt-outs, and the airgap badge will read `fallback` rather than `blocked`. Your documents still never leave your machine — there is no code that sends them anywhere — but the network-level hard block is a Linux-only feature. If verifiable network isolation is the reason you're here, run this on Linux.
-
 ---
 
 ## Features
 
-- **Private by construction** — kernel-level network egress block on Linux with an active in-UI probe to verify it; telemetry-disabled fallback on macOS/Windows
+- **Private by construction** — Docker network isolation gives the API container no route to the internet on Linux, macOS, and Windows; an active in-UI probe confirms it with a green ✓ badge
 - **Search by meaning** — describe what you're looking for in plain English; results ranked by semantic relevance
 - **AI summaries with citations** — optional local Ollama generates a cited synthesis of matching papers; each claim links back to its source
 - **Verifiable indexing** — every run produces an index summary listing exactly which files were indexed, skipped, or failed (see [Index summary](#index-summary))

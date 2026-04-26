@@ -54,7 +54,6 @@ Detected at startup via `GET /api/tags`. When absent, standard embedding search 
 | `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | fastembed model identifier |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `llama3.2` | LLM for HyDE, expansion, summary |
-| `DISABLE_NETWORK_ISOLATION` | `0` | Set to `1` to skip iptables egress blocking |
 
 ## Data volumes (Docker)
 

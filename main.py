@@ -87,19 +87,10 @@ def _summarize_result(result: dict | None) -> dict | None:
 
 def _probe_airgap() -> dict:
     """TCP-only egress probe to a public IP. No DNS, no HTTP, no payload —
-    just a SYN to 1.1.1.1:443. If iptables is enforcing the egress block, the
-    SYN never gets a response and we time out (mode=blocked). If the probe
-    connects, the airgap is *not* in effect (mode=breach), and we say so
-    loudly. When the user has explicitly opted out via DISABLE_NETWORK_ISOLATION,
-    we don't probe — we report fallback so the UI reflects the chosen tradeoff."""
+    just a SYN to 1.1.1.1:443. If the Docker internal network is enforcing
+    the egress block, the SYN never gets a response and we time out
+    (mode=blocked). If the probe connects, egress is not blocked (mode=breach)."""
     probed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    if os.environ.get("DISABLE_NETWORK_ISOLATION", "0") == "1":
-        return {
-            "airgapped": False,
-            "mode": "fallback",
-            "detail": "Network isolation disabled (DISABLE_NETWORK_ISOLATION=1).",
-            "probed_at": probed_at,
-        }
     try:
         with socket.create_connection(("1.1.1.1", 443), timeout=3.0):
             return {
