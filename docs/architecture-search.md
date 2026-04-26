@@ -18,7 +18,10 @@ GET /api/search?q=
 2. `extractors.extract()` → plain text per file
 3. Chunk text, embed in batches of 8 with fastembed
 4. Store chunks + metadata in ChromaDB (`zotero_docs` collection, cosine space)
-5. Incremental by default — items already indexed are skipped
+5. Upsert item result immediately to `IndexDB` (SQLite, WAL mode) — one row per attachment, status `indexed` / `skipped_*` / `extraction_failed` / `no_attachment_on_disk`
+6. Incremental by default — items whose first chunk ID already exists in ChromaDB are skipped
+
+Interrupted runs are marked `interrupted` in the SQLite log on next startup. `GET /api/index/summary` reads the log directly, so the full item list is available across restarts and during an active run.
 
 **Supported formats:** PDF (pymupdf), DOCX, PPTX, XLSX, RTF, HTML/XML
 
@@ -34,9 +37,9 @@ Collections are read directly from the Zotero SQLite database (`SELECT DISTINCT 
 4. Score = `1 - distance/2`; filter by `min_score` (default 0.55), deduplicate by `item_id`, optionally filter by collection
 5. Return ranked hits with title, authors, year, collections, matched text snippet, attach path
 
-## Ollama integration (optional)
+## Ollama integration
 
-Detected at startup via `GET /api/tags`. When absent, standard embedding search still works.
+Ollama runs inside the same container and is always available. The app waits for Ollama readiness at startup before serving requests.
 
 | Endpoint | Feature |
 |----------|---------|
@@ -51,6 +54,7 @@ Detected at startup via `GET /api/tags`. When absent, standard embedding search 
 | `ZOTERO_DB` | `/zotero/zotero.sqlite` | Zotero database path (container); `~/Zotero/zotero.sqlite` (host dev) |
 | `ZOTERO_STORAGE` | `/zotero/storage` | Attachment files root (container); `~/Zotero/storage` (host dev) |
 | `CHROMA_PATH` | `/data/chroma` | Vector store (container); `~/.local/share/zotero-private-search/chroma` (host dev) |
+| `INDEX_DB_PATH` | `<CHROMA_PATH>/index-log.db` | SQLite indexing log |
 | `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | fastembed model identifier |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `llama3.2` | LLM for HyDE, expansion, summary |
@@ -60,5 +64,5 @@ Detected at startup via `GET /api/tags`. When absent, standard embedding search 
 | Container path | Type | Purpose |
 |---------------|------|---------|
 | `/zotero` | bind mount (read-only) | Zotero library |
-| `/data/chroma` | named volume `chroma-data` | Persistent vector index |
+| `/data/chroma` | named volume `chroma-data` | Persistent vector index + `index-log.db` |
 | `/app/models` | baked into image | fastembed model cache |

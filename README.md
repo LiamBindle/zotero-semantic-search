@@ -47,8 +47,8 @@ See [SECURITY.md](SECURITY.md) for the full threat model, including what's out o
 
 - **Private by construction** — Docker network isolation gives the API container no route to the internet on Linux, macOS, and Windows; an active in-UI probe confirms it with a green ✓ badge
 - **Search by meaning** — describe what you're looking for in plain English; results ranked by semantic relevance
-- **AI summaries with citations** — optional local Ollama generates a cited synthesis of matching papers; each claim links back to its source
-- **Verifiable indexing** — every run produces an index summary listing exactly which files were indexed, skipped, or failed (see [Index summary](#index-summary))
+- **AI summaries with citations** — local Ollama generates a cited synthesis of matching papers; each claim links back to its source
+- **Verifiable indexing** — every document indexed, skipped, or failed is recorded and visible in the UI so you can verify completeness without grepping logs
 - **Broad file support** — PDF, Word, PowerPoint, Excel, ODT, EPUB, HTML, RTF, plain text, Markdown
 - **No Zotero plugin** — reads your existing Zotero library directly; nothing to install in Zotero, no account, no sync
 - **Collection filtering** — search your whole library or scope to a specific Zotero collection
@@ -96,61 +96,9 @@ Once the startup screen clears, you're ready to search.
 
 ## How it works
 
-```
-Query
-  │
-  ├─ Ollama (HyDE) ──► hypothetical passage ──► embed ──► ChromaDB query
-  │                                                              │
-  └─ (fallback) ──────────────────────────► embed ──► ChromaDB query
-                                                              │
-                                                         ranked results
-                                                              │
-                                                    Ollama (summary) ──► streamed response
-```
-
-1. **Indexing** — attachments are extracted and split into ~2000-character chunks, embedded with [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5), and stored in a ChromaDB cosine-similarity index. After each run, an [index summary](#index-summary) records exactly which files were indexed, skipped, or failed.
-2. **Search** — the query is embedded (or a LLM-generated hypothetical document is used instead, via [HyDE](https://arxiv.org/abs/2212.10496)) and the nearest chunks are retrieved; results are deduplicated to one card per paper.
+1. **Indexing** — attachments are extracted and split into ~2000-character chunks, embedded with [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5), and stored in a ChromaDB cosine-similarity index.
+2. **Search** — the query is embedded (or an LLM-generated hypothetical document is used instead, via [HyDE](https://arxiv.org/abs/2212.10496)) and the nearest chunks are retrieved; results are deduplicated to one card per paper.
 3. **Summary** — visible result cards are sent to a local Ollama instance with a citation prompt; the response streams back to the browser.
-
-### Index summary
-
-Trusting that a privacy-sensitive corpus was actually indexed matters more than trusting a progress bar, so every run produces a structured summary covering each attachment:
-
-- `indexed` — text was extracted and vectors were stored
-- `skipped_unsupported` — file extension not in the supported list
-- `skipped_empty` — no extractable text (e.g. a scanned PDF with no OCR layer)
-- `extraction_failed` — extractor raised an error (with the message)
-- `no_attachment_on_disk` — Zotero has the metadata but the file is missing
-
-The summary is written to `<chroma-parent>/index-summary.json` and is also reachable via `GET /api/index/summary`. The frontend surfaces it through the "N / M indexed" counter — clicking it opens a citation-style list of every item, so you can verify completeness without grepping logs.
-
----
-
-## Configuration
-
-For most users no configuration is needed. The following environment variables can be set in the generated `docker-compose.yml` (found in the app's data directory) to override defaults:
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `ZOTERO_DB` | `/zotero/zotero.sqlite` | Path to your Zotero SQLite database |
-| `ZOTERO_STORAGE` | `/zotero/storage` | Path to your Zotero attachment storage |
-| `CHROMA_PATH` | `/data/chroma` | Where the vector index is stored |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `llama3.2` | Model used for AI summaries |
-| `EMBED_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | Embedding model |
-
----
-
-## Scope
-
-This tool is intentionally focused on one thing: verifiably private semantic search over your existing Zotero library. To keep the privacy guarantee strong and the surface area small, several things are deliberately out of scope:
-
-- It is not a Zotero plugin (use ZotSeek if you want one)
-- It requires Docker — the container is the security boundary
-- It does not OCR scanned PDFs; they appear in the index summary as `skipped_empty` so you can verify what was and wasn't indexed
-- It does not currently provide find-similar, hybrid keyword+semantic search, or reranking. These may be added in the future
-
-If you need those features today, ZotSeek or [deep-zotero](https://github.com/ccam80/deep-zotero) are likely better fits.
 
 ---
 
@@ -168,16 +116,8 @@ Run `ollama serve` separately if you want AI features during development.
 
 ---
 
-## Contributing
-
-Bug reports and pull requests are welcome. For significant changes, please open an issue first to discuss the approach.
-
-If you find a security issue, please follow the disclosure process in [SECURITY.md](SECURITY.md) rather than opening a public issue.
-
----
-
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE) — if you deploy a modified version as a network service, you must make the source available.
- 
-If the AGPL doesn't fit your use case (commercial deployment, institutional integration, or other reasons), reach out at to discuss alternative licensing.
+
+If the AGPL doesn't fit your use case (commercial deployment, institutional integration, or other reasons), reach out to discuss alternative licensing. For security issues please follow the disclosure process in [SECURITY.md](SECURITY.md) rather than opening a public issue.
